@@ -3,6 +3,7 @@
   "version": "0.0.5",
   "description": "Series of resolvers implementing graphql-inspired methods for fetching data, except in JSON",
   "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc",
     "lint": "tslint -p tsconfig.json",
