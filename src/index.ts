@@ -125,7 +125,7 @@ export const getTypeDefs = () => exportedSchema.typeDefs;
 
 export * as subscriptionHelper from './helpers/tier2/subscription';
 
-export { Service } from './services/service';
+export * as serviceHelper from './services/service';
 
 export * as mysqlHelper from './helpers/tier1/mysql';
 
