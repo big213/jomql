@@ -1,5 +1,5 @@
 import generateAccessorInfoService from './accessorInfo.service'
-import errorHelper from '../../../helpers/tier0/error';
+import errorHelper from '../../helpers/tier0/error';
 
 export default function(service: any) {
   const AccessorInfo = generateAccessorInfoService(service);

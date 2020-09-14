@@ -1,7 +1,7 @@
 import { Service } from '../service';
 
 import * as resolverHelper from '../../resolvers/virtualResolver';
-import errorHelper from '../../../helpers/tier0/error';
+import errorHelper from '../../helpers/tier0/error';
 
 import generateAccessorInfoTypeDef from './accessorInfo.typeDef'
 

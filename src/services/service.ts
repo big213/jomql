@@ -1,4 +1,4 @@
-import errorHelper from '../../helpers/tier0/error';
+import errorHelper from '../helpers/tier0/error';
 import generatePaginatorService from './generator/paginator.service'
 import generateAccessorService from './generator/accessor.service'
 
