@@ -1,7 +1,7 @@
 {
   "name": "jamesql",
-  "version": "0.0.1",
-  "description": "A nice greeter",
+  "version": "0.0.2",
+  "description": "Series of resolvers implementing graphql-inspired methods for fetching data, except in JSON",
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
@@ -17,8 +17,9 @@
     "url": "git+https://github.com/big213/jamesql.git"
   },
   "keywords": [
-    "Hello",
-    "Greeter"
+    "jamesql",
+    "graphql",
+    "mysql"
   ],
   "author": "big213",
   "license": "ISC",

@@ -1,6 +1,5 @@
 import errorHelper from '../helpers/tier0/error';
-import generatePaginatorService from './generator/paginator.service'
-import generateAccessorService from './generator/accessor.service'
+import { generatePaginatorService, generateAccessorService } from './generators'
 
 import * as resolverHelper from '../resolvers/resolver';
 

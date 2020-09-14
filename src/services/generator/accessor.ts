@@ -1,7 +1,28 @@
-import generateAccessorInfoService from './accessorInfo.service'
+import { Service } from '../service';
+import { generateAccessorInfoService } from './accessorInfo'
 import errorHelper from '../../helpers/tier0/error';
 
-export default function(service: any) {
+export function generateAccessorService(service: any) {
+  return class extends Service {
+    static __typename = service.__typename + 'Accessor';
+    static presets = {
+      default: {
+        accessorInfo: {
+          sufficientPermissions: null,
+        },
+        data: null
+      }
+    };
+
+    static hasKeys = false;
+
+    static getTypeDef = Service.getTypeDef;
+
+    static getRecord = Service.getRecord;
+  }
+}
+
+export function generateAccessorTypeDef(service: any) {
   const AccessorInfo = generateAccessorInfoService(service);
 
   return {

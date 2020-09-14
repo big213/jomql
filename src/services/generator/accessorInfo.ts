@@ -3,9 +3,9 @@ import { Service } from '../service';
 import * as resolverHelper from '../../resolvers/virtualResolver';
 import errorHelper from '../../helpers/tier0/error';
 
-import generateAccessorInfoTypeDef from './accessorInfo.typeDef'
+import { dataTypes } from '../../helpers/tier0/dataType';
 
-export default function(service: any) {
+export function generateAccessorInfoService(service: any) {
   return class extends Service {
     static __typename = 'accessorInfo';
     static presets = {
@@ -27,3 +27,22 @@ export default function(service: any) {
     }
   }
 }
+
+export function generateAccessorInfoTypeDef(service: any = {}) {
+  return {
+    permissions: {
+      type: dataTypes.STRING,
+      resolver: async (context, req, currentObject, query, args) => {
+        return service.getRecords(req, {
+          ...args
+        }, null, true);
+      }
+    },
+    sufficientPermissions: {
+      type: dataTypes.BOOLEAN,
+      resolver: async (context, req, currentObject, query, args) => {
+        return service.testPermissions('get', req);
+      }
+    }
+  }
+};
