@@ -1,6 +1,6 @@
 {
   "name": "jamesql",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Series of resolvers implementing graphql-inspired methods for fetching data, except in JSON",
   "main": "lib/index.js",
   "scripts": {
