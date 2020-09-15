@@ -4,10 +4,9 @@ import { handleWebhook, handlePusherAuth, typeDef as jqlSubscriptionTypeDef } fr
 import { initializePusher } from './utils/pusher';
 
 // utils
-import mysql from './utils/mysql2';
+import * as mysql from './utils/mysql2';
 
-let exportedSchema: any;
-let exportedLookupValue: any;
+let exportedSchema: any, exportedLookupValue: any;
 
 export function initialize(app: any, schema: any, params: any = {}) {
   const {

@@ -3,7 +3,7 @@ import { generatePaginatorService, generateAccessorService } from './generators'
 
 import * as resolverHelper from '../resolvers/resolver';
 
-import jqlHelper from '../helpers/tier0/jql';
+import * as jqlHelper from '../helpers/tier0/jql';
 
 import { handleJqlSubscription, handleJqlSubscriptionTrigger, handleJqlSubscriptionTriggerIterative, deleteJqlSubscription } from '../helpers/tier2/subscription'
 
@@ -270,8 +270,6 @@ export abstract class Service {
   }
 
   static async createRecord(req, args = <any> {}, query?: object, admin = false) {
-    if(!req.user) throw errorHelper.loginRequiredError();
-
     //if it does not pass the access control, throw an error
     if(!admin && !await this.testPermissions('create', req, args, query)) {
       throw errorHelper.badPermissionsError();
@@ -293,8 +291,6 @@ export abstract class Service {
   }
 
   static async updateRecord(req, args = <any> {}, query?: object) {
-    if(!req.user) throw errorHelper.loginRequiredError();
-
     //if it does not pass the access control, throw an error
     if(!await this.testPermissions('update', req, args, query)) {
       throw errorHelper.badPermissionsError();
@@ -333,8 +329,6 @@ export abstract class Service {
   }
 
   static async deleteRecord(req, args = <any> {}, query?: object) {
-    if(!req.user) throw errorHelper.loginRequiredError();
-
     //if it does not pass the access control, throw an error
     if(!await this.testPermissions('delete', req, args, query)) {
       throw errorHelper.badPermissionsError();
