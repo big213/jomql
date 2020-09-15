@@ -1,7 +1,7 @@
 {
-  "name": "jamesql",
-  "version": "0.0.6",
-  "description": "Series of resolvers implementing graphql-inspired methods for fetching data, except in JSON",
+  "name": "jomql",
+  "version": "0.0.7",
+  "description": "Series of resolvers implementing graphql-inspired methods for fetching data in JSON",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
@@ -15,19 +15,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/big213/jamesql.git"
+    "url": "git+https://github.com/big213/jomql.git"
   },
   "keywords": [
-    "jamesql",
+    "jomql",
     "graphql",
     "mysql"
   ],
   "author": "big213",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/big213/big213/issues"
+    "url": "https://github.com/big213/jomql/issues"
   },
-  "homepage": "https://github.com/big213/big213#readme",
+  "homepage": "https://github.com/big213/jomql#readme",
   "dependencies": {
     "mysql2": "^2.1.0",
     "named-placeholders": "^1.1.2",

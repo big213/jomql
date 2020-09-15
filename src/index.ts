@@ -7,16 +7,21 @@ import { initializePusher } from './utils/pusher';
 import mysql from './utils/mysql2';
 
 let exportedSchema: any;
+let exportedLookupValue: any;
 
 export function initialize(app: any, schema: any, params: any = {}) {
   const {
     mysqlEnv,
     pusherEnv,
     debug,
-    allowedOrigins
+    allowedOrigins,
+    lookupValue = null
   } = params;
 
   exportedSchema = schema;
+
+  //lookup value must be primitive. i.e. null, true, false, 1
+  exportedLookupValue = lookupValue;
   
   mysql.initializePool(mysqlEnv, debug);
   initializePusher(pusherEnv);
@@ -120,6 +125,8 @@ export function initialize(app: any, schema: any, params: any = {}) {
 };
 
 export const getSchema = () => exportedSchema;
+
+export const getLookupValue = () => exportedLookupValue;
 
 export const getTypeDefs = () => exportedSchema.typeDefs;
 

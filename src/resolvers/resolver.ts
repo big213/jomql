@@ -1,4 +1,4 @@
-import jqlHelper from '../helpers/tier0/jql';
+import * as jqlHelper from '../helpers/tier0/jql';
 import sharedHelper from '../helpers/tier0/shared';
 
 import { mysqlHelper, getTypeDefs } from '..';
