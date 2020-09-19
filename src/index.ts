@@ -131,8 +131,6 @@ export const getTypeDefs = () => exportedSchema.typeDefs;
 
 export * as subscriptionHelper from './helpers/tier2/subscription';
 
-export * as serviceHelper from './services/service';
-
 export * as mysqlHelper from './helpers/tier1/mysql';
 
 export * as resolverHelper from './resolvers/resolver';
@@ -143,4 +141,4 @@ export { dataTypes } from './helpers/tier0/dataType';
 
 export * as typeDefHelper from './helpers/tier0/typeDef';
 
-export * as generators from './services/generators';
+export * as jomqlHelper from './helpers/tier0/jql';

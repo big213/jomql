@@ -1,4 +1,4 @@
-import jqlHelper from '../helpers/tier0/jql';
+import * as jqlHelper from '../helpers/tier0/jql';
 
 //import firestoreHelper from '../tier1/firestore';
 

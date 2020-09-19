@@ -1,5 +1,5 @@
 import { getTypeDefs } from '../..';
-import mysql from '../../utils/mysql2';
+import * as mysql from '../../utils/mysql2';
 
 import errorHelper from '../tier0/error';
 

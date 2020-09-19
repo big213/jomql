@@ -16,7 +16,7 @@ export function validateJsonqlQuery(externalQuery, typename, typeDef = null) {
   }
 
   //if the * field is provided, make sure all non-arg, non-hidden fields are there
-  if("*" in externalQuery) {
+  if("*" in externalQuery && externalQuery["*"] === lookupValue) {
     for(const field in validQuery) {
       if(!validQuery[field].hidden && !validQuery[field].args && !(field in externalQuery)) {
         externalQuery[field] = lookupValue;

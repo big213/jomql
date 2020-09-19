@@ -1,4 +1,4 @@
-import jqlHelper from '../helpers/tier0/jql';
+import * as jqlHelper from '../helpers/tier0/jql';
 
 export async function resolveTableRows(context, req, jqlQuery, args = <any> {}, typeDef = <any> {}) {
   //validate graphql
