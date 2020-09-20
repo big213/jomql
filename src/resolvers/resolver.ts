@@ -129,11 +129,11 @@ export async function deleteTableRow(classname, args, whereArray) {
   return resultObject;
 }
 
-export async function resolveTableRows(classname, context, req, jqlQuery, args = {}) {
-  const validQuery = getTypeDefs()[classname];
-
+export async function resolveTableRows(typename, context, req, jqlQuery, args = {}, typeDef?: any) {
   //validate graphql
-  const validatedGraphql = jqlHelper.validateJsonqlQuery(jqlQuery.select, classname);
+  const validatedGraphql = jqlHelper.validateJsonqlQuery(jqlQuery.select, typename, typeDef);
+
+  const validQuery = getTypeDefs()[typename];
 
   jqlQuery.select = validatedGraphql.validatedQuery;
 
@@ -159,20 +159,20 @@ export async function resolveTableRows(classname, context, req, jqlQuery, args =
     });
   }
 
-  const returnArray = hasMysqlFields ? sharedHelper.collapseObjectArray(await mysqlHelper.fetchTableRows(classname, jqlQuery)) : [{ __typename: context.__typename }];
+  const returnArray = hasMysqlFields ? sharedHelper.collapseObjectArray(await mysqlHelper.fetchTableRows(typename, jqlQuery)) : [{ __typename: typename }];
 
   //apply transformations of results
   for(const returnObject of returnArray) {
-    await jqlHelper.handleTransformQueries(returnObject, validatedGraphql.validatedQuery, context, req, args);
+    await jqlHelper.handleTransformQueries(returnObject, validatedGraphql.validatedQuery, typename, req, args);
   }
 
   //handle resolved fields
   for(const returnObject of returnArray) {
-    await jqlHelper.handleResolvedQueries(returnObject, validatedGraphql.validatedResolvedQuery, context, req, args);
+    await jqlHelper.handleResolvedQueries(returnObject, validatedGraphql.validatedResolvedQuery, typename, req, args);
   }
 
   //handle aggregated fields
-  await jqlHelper.handleAggregatedQueries(returnArray, validatedGraphql.validatedAggregatedQuery, context, req, args);
+  await jqlHelper.handleAggregatedQueries(returnArray, validatedGraphql.validatedAggregatedQuery, typename, req, args);
 
   return returnArray;
 }

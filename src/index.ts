@@ -134,11 +134,6 @@ export * as subscriptionHelper from './helpers/tier2/subscription';
 export * as mysqlHelper from './helpers/tier1/mysql';
 
 export * as resolverHelper from './resolvers/resolver';
-
-export * as rootResolverHelper from './helpers/tier2/rootResolver';
-
 export { dataTypes } from './helpers/tier0/dataType';
-
-export * as typeDefHelper from './helpers/tier0/typeDef';
 
 export * as jomqlHelper from './helpers/tier0/jql';

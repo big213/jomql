@@ -129,7 +129,7 @@ export function validateJsonqlQuery(externalQuery, typename, typeDef = null) {
 };
 
 //handle transformations
-export async function handleTransformQueries(obj, resolvedQuery, context, req, args, previous?: Object) {
+export async function handleTransformQueries(obj, resolvedQuery, typename, req, args, previous?: Object) {
   for(const field in resolvedQuery) {
     //if there is a transform getter, apply the function
     if(resolvedQuery[field].transform?.getter) {
@@ -138,24 +138,24 @@ export async function handleTransformQueries(obj, resolvedQuery, context, req, a
 
     //if it has __nested fields, go deeper
     if(resolvedQuery[field].__nestedQuery) {
-      await handleTransformQueries(obj[field], resolvedQuery[field].__nestedQuery, context, req, args);
+      await handleTransformQueries(obj[field], resolvedQuery[field].__nestedQuery, typename, req, args);
     }
   }
 }
 
 //resolves the queries, and attaches them to the obj (if possible)
-export async function handleResolvedQueries(obj, resolvedQuery, context, req, args, previous?: Object) {
+export async function handleResolvedQueries(obj, resolvedQuery, typename, req, args, previous?: Object) {
   for(const field in resolvedQuery) {
     //if field has a resolver, attempt to resolve and put in obj
     if(resolvedQuery[field].resolver) {
 
       //if dataloader flag set, fetch the raw field and defer
       if(!resolvedQuery[field].dataloader) {
-        obj[field] = await resolvedQuery[field].resolver(context, req, obj, resolvedQuery[field].externalQuery, args, previous);
+        obj[field] = await resolvedQuery[field].resolver(typename, req, obj, resolvedQuery[field].externalQuery, args, previous);
       }
     } else {
       //if field does not have a resolver, it must be a type. go deeper
-      await handleResolvedQueries(obj[field], resolvedQuery[field].type, context, req, args, {
+      await handleResolvedQueries(obj[field], resolvedQuery[field].type, typename, req, args, {
         obj, //parent obj
         resolvedQuery,
       });
@@ -163,7 +163,7 @@ export async function handleResolvedQueries(obj, resolvedQuery, context, req, ar
   }
 }
 
-export async function handleAggregatedQueries(resultsArray, aggregatedQuery, context, req, args, previous?: Object) {
+export async function handleAggregatedQueries(resultsArray, aggregatedQuery, typename, req, args, previous?: Object) {
   for(const field in aggregatedQuery) {
     if(aggregatedQuery[field].resolver) {
       const joinSet = new Set();
@@ -172,7 +172,7 @@ export async function handleAggregatedQueries(resultsArray, aggregatedQuery, con
         joinSet.add(result[field]);
       });
 
-      const aggregatedResults = await aggregatedQuery[field].resolver(context, req, {}, aggregatedQuery[field].externalQuery, { id: [...joinSet] }, previous);
+      const aggregatedResults = await aggregatedQuery[field].resolver(typename, req, {}, aggregatedQuery[field].externalQuery, { id: [...joinSet] }, previous);
 
       //build id -> record map
       const recordMap = {};
