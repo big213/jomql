@@ -1,5 +1,6 @@
 import responseHelper from '../tier0/response';
 import { ErrorWrapper } from '../../classes/errorWrapper';
+import { isDebug } from '../..'
 
 export default {
   externalFnWrapper(externalFn) {
@@ -10,7 +11,9 @@ export default {
         res.header("Content-Type", "application/json");
         res.status(responseObject.statusCode || 200).send(responseObject);
       } catch (err) {
-        console.log(err);
+        if(isDebug()) {
+          console.log(err);
+        }
         //if not a wrapped error, wrap it        
         const errorResponseObject = responseHelper.generateErrorResponse((err instanceof ErrorWrapper) ? err : new ErrorWrapper(err.message, 500, "system-generated-error", err));
 

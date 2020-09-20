@@ -97,7 +97,7 @@ export async function handleJqlSubscriptionTriggerIterative(req, service, operat
       getPusher().trigger('private-' + item.channel, 'subscription-data', {
         'data': data
       });
-    }).catch(e => console.log(e)));
+    }).catch(e => e));
   }
 
   return Promise.all(promises);
