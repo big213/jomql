@@ -137,3 +137,5 @@ export * as resolverHelper from './resolvers/resolver';
 export { dataTypes } from './helpers/tier0/dataType';
 
 export * as jomqlHelper from './helpers/tier0/jql';
+
+export { ErrorWrapper } from './classes/errorWrapper';
