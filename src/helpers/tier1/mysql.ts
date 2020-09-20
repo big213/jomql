@@ -117,7 +117,7 @@ export function insertTableRow(table, fields, raw_fields = {}, ignore = false) {
     //remove trailing comma
     set_statement = set_statement.slice(0, -2);
   } else {
-    throw errorHelper.generateError('Invalid SQL');
+    throw errorHelper.invalidSqlError();
   }
 
   const query = "INSERT " + (ignore ? "IGNORE " : "") + "INTO " + table + " SET " + set_statement;
@@ -148,7 +148,7 @@ export function updateTableRow(table, set_fields, raw_fields = {}, whereArray) {
     //remove trailing comma
     set_statement = set_statement.slice(0, -2);
   } else {
-    throw errorHelper.generateError('Invalid SQL');
+    throw errorHelper.invalidSqlError();
   }
 
   //handle where statements
@@ -160,7 +160,7 @@ export function updateTableRow(table, set_fields, raw_fields = {}, whereArray) {
   }
   
   if(!where_statement) {
-    throw errorHelper.generateError('Invalid SQL');
+    throw errorHelper.invalidSqlError();
   }
 
   //combine statements
@@ -185,7 +185,7 @@ export function removeTableRow(table, whereArray) {
   }
   
   if(!where_statement) {
-    throw errorHelper.generateError('Invalid SQL');
+    throw errorHelper.invalidSqlError();
   }
 
   const query = "DELETE FROM " + table + join_statement + " WHERE " + where_statement;
@@ -246,7 +246,7 @@ export function buildSqlQuery(query, tableObject, parentEntries = <Array<string>
   }
 
   if(!returnObject.select_statement) {
-    throw errorHelper.generateError('Invalid SQL');
+    throw errorHelper.invalidSqlError();
   }
 
   //append the classname field
