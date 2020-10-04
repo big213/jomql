@@ -2,13 +2,14 @@ import routerHelper from "./helpers/tier1/router";
 import { generateSchema, generateGraphqlSchema } from './helpers/tier0/schema';
 import { handleWebhook, handlePusherAuth, typeDef as jqlSubscriptionTypeDef } from "./helpers/tier2/subscription";
 import { initializePusher } from './utils/pusher';
+import type { Params } from "./types";
 
 // utils
 import * as mysql from './utils/mysql2';
 
 let exportedSchema: any, exportedLookupValue: any, exportedDebug: boolean;
 
-export function initialize(app: any, schema: any, params: any = {}) {
+export function initialize(app: any, schema: any, params: Params) {
   const {
     mysqlEnv,
     pusherEnv,
@@ -25,7 +26,8 @@ export function initialize(app: any, schema: any, params: any = {}) {
   exportedDebug = !!debug;
   
   mysql.initializePool(mysqlEnv, debug);
-  initializePusher(pusherEnv);
+
+  pusherEnv && initializePusher(pusherEnv);
 
   app.use((req: any, res: any, next: any) => {
     // aggregate all root resolvers

@@ -1,10 +1,12 @@
+import type { MysqlEnv } from '../types';
+
 const mysql = require('mysql2')
 const toUnnamed = require('named-placeholders')();
 const { Sequelize } = require('sequelize');
 
 let sequelize, pool, promisePool, isDev;
 
-export async function initializeSequelize(mysqlEnv) {
+export async function initializeSequelize(mysqlEnv: MysqlEnv) {
   try {
     sequelize = new Sequelize(mysqlEnv.database, mysqlEnv.user, mysqlEnv.password, {
       ...!mysqlEnv.socketpath && {
@@ -28,7 +30,7 @@ export async function initializeSequelize(mysqlEnv) {
   }
 }
 
-export async function initializePool(mysqlEnv, debug) {
+export async function initializePool(mysqlEnv: MysqlEnv, debug) {
   try {
     isDev = !!debug;
 

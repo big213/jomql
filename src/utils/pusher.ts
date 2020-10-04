@@ -1,8 +1,9 @@
 import * as Pusher from "pusher";
+import type { PusherEnv } from '../types';
 
 let pusher;
 
-export function initializePusher(pusherEnv: any) {
+export function initializePusher(pusherEnv: PusherEnv) {
   pusher = new Pusher({
     appId: pusherEnv.app_id,
     key: pusherEnv.key,
