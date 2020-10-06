@@ -2,8 +2,8 @@ import { Response } from '../../interfaces/response';
 import { ErrorWrapper } from '../../classes/errorWrapper';
 
 export default {
-	generateErrorResponse(error: ErrorWrapper) {
-		return <Response> {
+	generateErrorResponse(error: ErrorWrapper): Response {
+		return {
 			message: error.errorMessage,
 			dataType: 'string',
 			data: error.errorObject?.stack,
@@ -12,8 +12,8 @@ export default {
 		};
 	},
 
-	generateNormalResponse(dataType: string, data: any) {
-		return <Response> {
+	generateNormalResponse(dataType: string, data: any): Response {
+		return {
 			message: "OK",
 			dataType: dataType,
 			data: data,
@@ -22,8 +22,8 @@ export default {
 		};
 	},
 
-	generateResponse(message: string, dataType: string, data: any, responseType: string, statusCode: 200) {
-		return <Response> {
+	generateResponse(message: string, dataType: string, data: any, responseType: string, statusCode: 200): Response {
+		return {
 			message: message,
 			dataType: dataType,
 			data: data,
