@@ -52,7 +52,7 @@ export async function addTableRow(classname, args, adminFields = {}, ignore = fa
 }
 
 //validates the add fields, and then does the add operation
-export async function updateTableRow(classname, args, adminArgs = {}, whereArray) {
+export async function updateTableRow(classname, args, whereArray) {
   //resolve the setters
   const validQuery = getTypeDefs()[classname];
 
@@ -67,18 +67,6 @@ export async function updateTableRow(classname, args, adminArgs = {}, whereArray
       if(validQuery[field].updateable) {
         //if there's a setter to transform the input, use that
         mysqlFields[field] = validQuery[field].transform?.setter ? await validQuery[field].transform?.setter(args[field]) : args[field];
-      } else if(validQuery[field].updater) {
-        customResolvers[field] = validQuery[field].updater;
-      }
-    }
-  }
-
-  //process adminFields
-  for(const field in adminArgs) {
-    if(field in validQuery) {
-      if(validQuery[field].updateable) {
-        //if there's a setter to transform the input, use that
-        mysqlFields[field] = validQuery[field].transform?.setter ? await validQuery[field].transform?.setter(adminArgs[field]) : adminArgs[field];
       } else if(validQuery[field].updater) {
         customResolvers[field] = validQuery[field].updater;
       }
