@@ -15,8 +15,15 @@ export function initialize(app: any, schema: any, params: Params) {
     pusherEnv,
     debug,
     allowedOrigins,
-    lookupValue = null
+    lookupValue = null,
+    jomqlPath = '/jomql'
   } = params;
+
+  // jomqlPath must start with '/'
+
+  if (!jomqlPath.match(/^\//)) {
+    throw new Error('Invalid jomqlPath');
+  }
 
   exportedSchema = schema;
 
@@ -40,7 +47,7 @@ export function initialize(app: any, schema: any, params: Params) {
     }
 
     // handle jql queries
-    if(req.method === "POST" && req.url === "/jql") {
+    if(req.method === "POST" && req.url === jomqlPath) {
       if(req.body.action in allRootResolvers) {
         // map from action to method + url
         req.method = allRootResolvers[req.body.action].method;

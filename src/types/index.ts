@@ -22,4 +22,5 @@ export type Params = {
   readonly debug?: Boolean;
   readonly allowedOrigins?: Array<string>;
   readonly lookupValue?: any;
+  readonly jomqlPath?: string;
 };
