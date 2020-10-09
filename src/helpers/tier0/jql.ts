@@ -10,8 +10,8 @@ export function validateJsonqlQuery(externalQuery, typename, typeDef = null) {
   //define the lookupValue
   const lookupValue = getLookupValue();
 
-  //ensure the id field is there
-  if("id" in validQuery) {
+  //ensure the id field is there, if it is part of the validQuery
+  if("id" in validQuery && !("id" in externalQuery)) {
     externalQuery.id = lookupValue;
   }
 
