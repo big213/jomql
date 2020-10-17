@@ -1,19 +1,17 @@
-
 export type MysqlEnv = {
-  readonly database: string,
-  readonly user: string,
-  readonly password: string,
-  readonly socketpath?: string,
-  readonly host?: string,
-  readonly port?: string,
+  readonly database: string;
+  readonly user: string;
+  readonly password: string;
+  readonly socketpath?: string;
+  readonly host?: string;
+  readonly port?: string;
 };
 
-
 export type PusherEnv = {
-  readonly app_id: string,
-  readonly key: string,
-  readonly secret: string,
-  readonly cluster: string,
+  readonly app_id: string;
+  readonly key: string;
+  readonly secret: string;
+  readonly cluster: string;
 };
 
 export type Params = {
@@ -23,4 +21,5 @@ export type Params = {
   readonly allowedOrigins?: Array<string>;
   readonly lookupValue?: any;
   readonly jomqlPath?: string;
+  readonly allowSync?: Boolean;
 };

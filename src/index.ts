@@ -21,6 +21,7 @@ export function initialize(app: any, schema: any, params: Params) {
     allowedOrigins,
     lookupValue = null,
     jomqlPath = "/jomql",
+    allowSync = false,
   } = params;
 
   // jomqlPath must start with '/'
@@ -127,40 +128,47 @@ export function initialize(app: any, schema: any, params: Params) {
 
   app.post("/pusher/webhook", handleWebhook);
 
-  app.post("/mysql/sync", function (req, res) {
-    //loop through typeDefs to identify needed mysql tables
-    mysql.initializeSequelize(mysqlEnv);
-    const sequelize = mysql.getSequelizeInstance();
+  app.post(
+    "/mysql/sync",
+    routerHelper.externalFnWrapper((req, res) => {
+      // only allowed to call on dev mode
+      if (!allowSync) {
+        throw new Error("Sync disabled");
+      }
+      //loop through typeDefs to identify needed mysql tables
+      mysql.initializeSequelize(mysqlEnv);
+      const sequelize = mysql.getSequelizeInstance();
 
-    for (const type in schema.typeDefs) {
-      const definition = {};
-      let properties = 0;
-      for (const prop in schema.typeDefs[type]) {
-        if (prop !== "id" && schema.typeDefs[type][prop].mysqlOptions?.type) {
-          definition[prop] = schema.typeDefs[type][prop].mysqlOptions;
-          properties++;
+      for (const type in schema.typeDefs) {
+        const definition = {};
+        let properties = 0;
+        for (const prop in schema.typeDefs[type]) {
+          if (prop !== "id" && schema.typeDefs[type][prop].mysqlOptions?.type) {
+            definition[prop] = schema.typeDefs[type][prop].mysqlOptions;
+            properties++;
+          }
+        }
+        if (properties > 0) {
+          sequelize.define(type, definition, {
+            timestamps: false,
+            freezeTableName: true,
+          });
         }
       }
-      if (properties > 0) {
-        sequelize.define(type, definition, {
-          timestamps: false,
-          freezeTableName: true,
-        });
-      }
-    }
 
-    //define the jql subscription table
-    sequelize.define("jqlSubscription", jqlSubscriptionTypeDef, {
-      timestamps: false,
-      freezeTableName: true,
-    });
+      //define the jql subscription table
+      sequelize.define("jqlSubscription", jqlSubscriptionTypeDef, {
+        timestamps: false,
+        freezeTableName: true,
+      });
 
-    sequelize.sync({ alter: true }).then(() => {
-      console.log("Drop and re-sync db.");
-      sequelize.close();
-      res.send({});
-    });
-  });
+      sequelize.sync({ alter: true }).then(() => {
+        console.log("Drop and re-sync db.");
+        sequelize.close();
+        res.send({});
+      });
+    })
+  );
 }
 
 export const getSchema = () => exportedSchema;
