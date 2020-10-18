@@ -190,7 +190,7 @@ export function syncDatabase(mysqlEnv, schema) {
     freezeTableName: true,
   });
 
-  sequelize
+  return sequelize
     .sync({ alter: true })
     .then(() => {
       console.log("Done syncing DB");
