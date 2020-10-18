@@ -10,6 +10,7 @@ import type { Params } from "./types";
 
 // utils
 import * as mysql from "./utils/mysql2";
+import { Sequelize } from "sequelize/types";
 
 let exportedSchema: any, exportedLookupValue: any, exportedDebug: boolean;
 
@@ -135,7 +136,7 @@ export function initialize(app: any, schema: any, params: Params) {
       if (!allowSync) {
         throw new Error("Sync disabled");
       }
-      syncDatabase(mysqlEnv, schema);
+      return syncDatabase(mysqlEnv, schema);
     })
   );
 }
@@ -155,7 +156,7 @@ export * as mysqlHelper from "./helpers/tier1/mysql";
 export * as resolverHelper from "./resolvers/resolver";
 export { dataTypes } from "./helpers/tier0/dataType";
 
-export { DataTypes as sequelizeDataTypes } from "sequelize";
+export { DataTypes as sequelizeDataTypes, Sequelize } from "sequelize";
 
 export * as jomqlHelper from "./helpers/tier0/jql";
 
@@ -189,8 +190,15 @@ export function syncDatabase(mysqlEnv, schema) {
     freezeTableName: true,
   });
 
-  sequelize.sync({ alter: true }).then(() => {
-    console.log("Done syncing DB");
-    sequelize.close();
-  });
+  sequelize
+    .sync({ alter: true })
+    .then(() => {
+      console.log("Done syncing DB");
+      sequelize.close();
+    })
+    .catch((err) => {
+      console.log("An error occurred with syncing.");
+      console.log(err);
+      sequelize.close();
+    });
 }
