@@ -1,6 +1,6 @@
 {
   "name": "jomql",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "Series of resolvers implementing graphql-inspired methods for fetching data in JSON",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -31,8 +31,6 @@
   "dependencies": {
     "mysql2": "^2.1.0",
     "named-placeholders": "^1.1.2",
-    "pusher": "^3.0.1",
-    "randomstring": "^1.1.5",
     "sequelize": "^6.3.4"
   },
   "devDependencies": {

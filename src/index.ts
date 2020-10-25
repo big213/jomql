@@ -1,16 +1,11 @@
 import routerHelper from "./helpers/tier1/router";
 import { generateSchema, generateGraphqlSchema } from "./helpers/tier0/schema";
-import {
-  handleWebhook,
-  handlePusherAuth,
-  typeDef as jqlSubscriptionTypeDef,
-} from "./helpers/tier2/subscription";
-import { initializePusher } from "./utils/pusher";
 import type { Params } from "./types";
 
 // utils
 import * as mysql from "./utils/mysql2";
-import { Sequelize } from "sequelize/types";
+
+import { initializeSequelize, getSequelizeInstance } from "./utils/sequelize";
 
 let exportedSchema: any, exportedLookupValue: any, exportedDebug: boolean;
 
@@ -26,7 +21,6 @@ export function initialize(app: any, schema: any, params: Params) {
   } = params;
 
   // jomqlPath must start with '/'
-
   if (!jomqlPath.match(/^\//)) {
     throw new Error("Invalid jomqlPath");
   }
@@ -39,8 +33,6 @@ export function initialize(app: any, schema: any, params: Params) {
   exportedDebug = !!debug;
 
   mysql.initializePool(mysqlEnv, debug);
-
-  pusherEnv && initializePusher(pusherEnv);
 
   app.use((req: any, res: any, next: any) => {
     // aggregate all root resolvers
@@ -125,10 +117,6 @@ export function initialize(app: any, schema: any, params: Params) {
     res.send(generateGraphqlSchema(schema));
   });
 
-  app.post("/pusher/auth", handlePusherAuth);
-
-  app.post("/pusher/webhook", handleWebhook);
-
   app.post(
     "/mysql/sync",
     routerHelper.externalFnWrapper((req, res) => {
@@ -141,6 +129,8 @@ export function initialize(app: any, schema: any, params: Params) {
   );
 }
 
+export { initializeSequelize, getSequelizeInstance } from "./utils/sequelize";
+
 export const getSchema = () => exportedSchema;
 
 export const getLookupValue = () => exportedLookupValue;
@@ -148,8 +138,6 @@ export const getLookupValue = () => exportedLookupValue;
 export const getTypeDefs = () => exportedSchema.typeDefs;
 
 export const isDebug = () => exportedDebug;
-
-export * as subscriptionHelper from "./helpers/tier2/subscription";
 
 export * as mysqlHelper from "./helpers/tier1/mysql";
 
@@ -164,8 +152,8 @@ export { ErrorWrapper } from "./classes/errorWrapper";
 
 export function syncDatabase(mysqlEnv, schema) {
   //loop through typeDefs to identify needed mysql tables
-  mysql.initializeSequelize(mysqlEnv);
-  const sequelize = mysql.getSequelizeInstance();
+  initializeSequelize(mysqlEnv);
+  const sequelize = getSequelizeInstance();
 
   for (const type in schema.typeDefs) {
     const definition = {};
@@ -183,12 +171,6 @@ export function syncDatabase(mysqlEnv, schema) {
       });
     }
   }
-
-  //define the jql subscription table
-  sequelize.define("jqlSubscription", jqlSubscriptionTypeDef, {
-    timestamps: false,
-    freezeTableName: true,
-  });
 
   return sequelize
     .sync({ alter: true })
