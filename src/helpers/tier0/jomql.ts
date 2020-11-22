@@ -5,7 +5,7 @@ export function validateJsonqlQuery(externalQuery, typename, typeDef = null) {
   const validatedResolvedQuery = {};
   const validatedAggregatedQuery = {};
   const validatedTransformQuery = {};
-  const validQuery = typeDef || getTypeDefs()[typename];
+  const validQuery = typeDef ?? getTypeDefs()[typename];
 
   //define the lookupValue
   const lookupValue = getLookupValue();
