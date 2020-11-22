@@ -1,7 +1,14 @@
-import routerHelper from "./helpers/tier1/router";
+import { externalFnWrapper } from "./helpers/tier1/router";
 import { generateSchema, generateGraphqlSchema } from "./helpers/tier0/schema";
-import type { Params } from "./types";
-
+import type { Params, Schema } from "./types";
+export type {
+  RootResolver,
+  RootResolverObject,
+  Schema,
+  ResolverFunction,
+  TypeDefObject,
+  TypeDef,
+} from "./types";
 // utils
 import * as mysql from "./utils/mysql2";
 
@@ -9,10 +16,9 @@ import { initializeSequelize, getSequelizeInstance } from "./utils/sequelize";
 
 let exportedSchema: any, exportedLookupValue: any, exportedDebug: boolean;
 
-export function initialize(app: any, schema: any, params: Params) {
+export function initializeJomql(app: any, schema: Schema, params: Params) {
   const {
     mysqlEnv,
-    pusherEnv,
     debug,
     allowedOrigins,
     lookupValue = null,
@@ -34,41 +40,38 @@ export function initialize(app: any, schema: any, params: Params) {
 
   mysql.initializePool(mysqlEnv, debug);
 
-  app.use((req: any, res: any, next: any) => {
+  app.use((req: any, res, next) => {
     // aggregate all root resolvers
-    const allRootResolvers = {};
+    const allRootResolversMap = new Map();
 
     for (const resolverType in schema.rootResolvers) {
       for (const prop in schema.rootResolvers[resolverType]) {
-        allRootResolvers[prop] = schema.rootResolvers[resolverType][prop];
+        allRootResolversMap.set(prop, schema.rootResolvers[resolverType][prop]);
       }
     }
 
-    // handle jql queries
+    // handle jomql queries
     if (req.method === "POST" && req.url === jomqlPath) {
-      if (req.body.action in allRootResolvers) {
+      const rootResolverObject = allRootResolversMap.get(req.body.action);
+
+      if (rootResolverObject) {
         // map from action to method + url
-        req.method = allRootResolvers[req.body.action].method;
-        req.url = allRootResolvers[req.body.action].route;
+        req.method = rootResolverObject.method;
+        req.url = rootResolverObject.route;
 
-        //add the app route that we are going to use
-        app[allRootResolvers[req.body.action].method](
-          allRootResolvers[req.body.action].route,
-          routerHelper.externalFnWrapper(
-            allRootResolvers[req.body.action].resolver
-          )
+        //add only the app route that we are going to use
+        app[rootResolverObject.method](
+          rootResolverObject.route,
+          externalFnWrapper(rootResolverObject.resolver)
         );
       }
 
-      req.jql = req.body.query || {};
+      req.jomql = req.body.query || {};
     } else {
-      //if not using jql, must populate all the routes
-      for (const prop in allRootResolvers) {
-        app[allRootResolvers[prop].method](
-          allRootResolvers[prop].route,
-          routerHelper.externalFnWrapper(allRootResolvers[prop].resolver)
-        );
-      }
+      //if not using jomql, must populate all the routes
+      allRootResolversMap.forEach((item) => {
+        app[item.method](item.route, externalFnWrapper(item.resolver));
+      });
     }
     next();
   });
@@ -119,7 +122,7 @@ export function initialize(app: any, schema: any, params: Params) {
 
   app.post(
     "/mysql/sync",
-    routerHelper.externalFnWrapper((req, res) => {
+    externalFnWrapper((req, res) => {
       // only allowed to call on dev mode
       if (!allowSync) {
         throw new Error("Sync disabled");
@@ -146,7 +149,7 @@ export { dataTypes } from "./helpers/tier0/dataType";
 
 export { DataTypes as sequelizeDataTypes, Sequelize } from "sequelize";
 
-export * as jomqlHelper from "./helpers/tier0/jql";
+export * as jomqlHelper from "./helpers/tier0/jomql";
 
 export { ErrorWrapper } from "./classes/errorWrapper";
 
