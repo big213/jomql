@@ -62,6 +62,17 @@ export function generateJomqlResolverTree(
     // we will keep track of if the field was used for anything
     let fieldUsed = false;
 
+    // check if field is lookupValue
+    const isLookupField = externalQuery[field] === lookupValue;
+
+    // check if field is nested
+    const isNestedField =
+      externalQuery[field] && typeof externalQuery[field] === "object";
+
+    // if not lookup or nested, deny
+    if (!isLookupField && !isNestedField)
+      throw new Error("Invalid Query: Invalid field RHS '" + field + "'");
+
     validatedResolverQuery[field] = {
       type: typeDef[field].type,
     };
@@ -73,22 +84,16 @@ export function generateJomqlResolverTree(
     }
 
     // if dataloader field present, add to resolver tree if nested (not a direct value lookup)
-    if (
-      typeDef[field].dataloader &&
-      externalQuery[field] !== lookupValue &&
-      externalQuery[field] &&
-      typeof externalQuery[field] === "object"
-    ) {
+    if (typeDef[field].dataloader && isNestedField) {
       fieldUsed = true;
       validatedResolverQuery[field].dataloader = typeDef[field].dataloader;
       validatedResolverQuery[field].query = externalQuery[field];
     }
 
-    // add custom resolvers to the resolver tree if it appears correctly
+    // add custom resolvers to the resolver tree if nested field or not mysql field
     if (
-      typeDef[field].resolver &&
-      (externalQuery[field] === lookupValue ||
-        (externalQuery[field] && typeof externalQuery[field] === "object"))
+      (typeDef[field].resolver && isNestedField) ||
+      !typeDef[field].mysqlOptions
     ) {
       fieldUsed = true;
 
@@ -102,16 +107,16 @@ export function generateJomqlResolverTree(
       const joinType = typeDef[field].mysqlOptions?.joinInfo?.type;
 
       // lookup the raw value directly
-      if (externalQuery[field] === lookupValue || typeDef[field].dataloader)
+      if (
+        isLookupField ||
+        validatedResolverQuery[field].dataloader ||
+        validatedResolverQuery[field].resolver
+      )
         validatedSqlQuery.push({
           field: parentFields.concat(field).join("."),
           getter: typeDef[field].mysqlOptions?.getter,
         });
-      else if (
-        joinType &&
-        externalQuery[field] &&
-        typeof externalQuery[field] === "object"
-      ) {
+      else if (joinType && isNestedField) {
         // need to join with another field
         const validatedNestedFields = generateJomqlResolverTree(
           externalQuery[field],
@@ -123,6 +128,8 @@ export function generateJomqlResolverTree(
 
         validatedResolverQuery[field].nested =
           validatedNestedFields.validatedResolverQuery;
+      } else {
+        throw new Error("Invalid Query: Mis-configured field '" + field + "'");
       }
     }
 

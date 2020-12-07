@@ -68,8 +68,8 @@ export async function addTableRow(
       // transform the input if there is a transform setter
       const transformSetter = typeDef[field].transform?.setter;
       const value = transformSetter
-        ? await transformSetter(args[field])
-        : args[field];
+        ? await transformSetter(adminFields[field])
+        : adminFields[field];
 
       // if it is a mysql field, add to mysqlFields
       if (typeDef[field].mysqlOptions) {
