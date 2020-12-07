@@ -114,7 +114,10 @@ export function fetchTableRows(sqlQuery: SqlQueryObject) {
   return mysql.executeDBQuery(sqlQueryString, params);
 }
 
-export async function countTableRows(table, whereArray) {
+export async function countTableRows(
+  table: string,
+  whereArray: SqlWhereObject[]
+) {
   let whereStatement = "";
   let joinStatement = "";
   const previousJoins: JoinsMap = {};
@@ -123,17 +126,15 @@ export async function countTableRows(table, whereArray) {
   const selectStatement = "count(*) AS count";
 
   //handle where statements
-  if (whereArray) {
-    const whereResults = processWhereArray(
-      table,
-      whereArray,
-      previousJoins,
-      params
-    );
+  const whereResults = processWhereArray(
+    table,
+    whereArray,
+    previousJoins,
+    params
+  );
 
-    whereStatement += whereResults.statements.join(" AND ");
-    joinStatement += whereResults.joinStatement;
-  }
+  whereStatement += whereResults.statements.join(" AND ");
+  joinStatement += whereResults.joinStatement;
 
   if (!whereStatement) {
     whereStatement = "1";
@@ -153,9 +154,8 @@ export async function countTableRows(table, whereArray) {
   return results[0].count;
 }
 
-//admin use only
 export function insertTableRow(
-  table,
+  table: string,
   setFields,
   rawSetFields = {},
   ignore = false
@@ -191,9 +191,8 @@ export function insertTableRow(
   return mysql.executeDBQuery(query, params);
 }
 
-//admin use only
 export function updateTableRow(
-  table,
+  table: string,
   setFields,
   rawSetFields = {},
   whereArray: SqlWhereObject[]
@@ -252,8 +251,7 @@ export function updateTableRow(
   return mysql.executeDBQuery(query, params);
 }
 
-//admin use only
-export function removeTableRow(table, whereArray: SqlWhereObject[]) {
+export function removeTableRow(table: string, whereArray: SqlWhereObject[]) {
   let whereStatement = "";
   let joinStatement = "";
   const previousJoins: JoinsMap = {};
