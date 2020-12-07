@@ -1,95 +1,166 @@
-import * as jomqlHelper from "../helpers/tier0/jomql";
-import sharedHelper from "../helpers/tier0/shared";
+import {
+  generateJomqlResolverTree,
+  handleResolvedQueries,
+  handleAggregatedQueries,
+} from "../helpers/tier0/jomql";
+import { collapseObjectArray } from "../helpers/tier0/shared";
+import type { TypeDef, SqlParams, SqlWhereObject, JomqlOutput } from "../types";
 
 import { mysqlHelper, getTypeDefs } from "..";
 
+export type CustomResolver = {
+  resolver: Function;
+  value?: any;
+};
+
+export type CustomResolverMap = {
+  [x: string]: CustomResolver;
+};
+
 //validates the add fields, and then does the add operation
 export async function addTableRow(
-  classname,
+  typename: string,
+  req,
   args,
   adminFields = {},
   ignore = false
 ) {
-  //resolve the setters
-  const validQuery = getTypeDefs()[classname];
+  const typeDef: TypeDef = getTypeDefs()[typename];
 
-  //assemble the mysql fields
-  const mysqlFields = {};
+  // assemble the mysql fields
+  const sqlFields = {};
 
-  //handle the custom setters
-  const customResolvers = {};
+  // handle the custom setters
+  const customResolvers: CustomResolverMap = {};
 
   for (const field in args) {
-    if (field in validQuery) {
-      if (validQuery[field].addable) {
-        //if there's a setter to transform the input, use that
-        mysqlFields[field] = validQuery[field].transform?.setter
-          ? await validQuery[field].transform?.setter(args[field])
-          : args[field];
-      } else if (validQuery[field].setter) {
-        customResolvers[field] = validQuery[field].setter;
+    if (field in typeDef) {
+      // skip if not addable
+      if (!typeDef[field].addable) {
+        continue;
+      }
+
+      // transform the input if there is a transform setter
+      const transformSetter = typeDef[field].transform?.setter;
+      const value = transformSetter
+        ? await transformSetter(args[field])
+        : args[field];
+
+      // if it is a mysql field, add to mysqlFields
+      if (typeDef[field].mysqlOptions) {
+        sqlFields[field] = value;
+      }
+
+      // if it has a custom setter, add to customResolvers
+      const customSetter = typeDef[field].setter;
+      if (customSetter) {
+        customResolvers[field] = {
+          resolver: customSetter,
+          value,
+        };
       }
     }
   }
 
-  //process adminFields
+  // process adminFields -- will not check for addable for these
   for (const field in adminFields) {
-    if (field in validQuery) {
-      if (validQuery[field].setter) {
-        customResolvers[field] = validQuery[field].setter;
-      } else {
-        mysqlFields[field] = validQuery[field].transform?.setter
-          ? await validQuery[field].transform?.setter(adminFields[field])
-          : adminFields[field];
+    if (field in typeDef) {
+      // transform the input if there is a transform setter
+      const transformSetter = typeDef[field].transform?.setter;
+      const value = transformSetter
+        ? await transformSetter(args[field])
+        : args[field];
+
+      // if it is a mysql field, add to mysqlFields
+      if (typeDef[field].mysqlOptions) {
+        sqlFields[field] = value;
+      }
+
+      // if it has a custom setter, add to customResolvers
+      const customSetter = typeDef[field].setter;
+      if (customSetter) {
+        customResolvers[field] = {
+          resolver: customSetter,
+          value,
+        };
       }
     }
   }
 
-  //do the mysql first
-  const addResults = await mysqlHelper.insertTableRow(
-    classname,
-    mysqlFields,
-    ignore
-  );
+  let addedResults;
+
+  //do the mysql first, if any
+  if (Object.keys(sqlFields).length > 0) {
+    addedResults = await mysqlHelper.insertTableRow(
+      typename,
+      sqlFields,
+      ignore
+    );
+  }
 
   const resultObject = {
-    id: addResults.insertId,
+    id: addedResults.insertId,
   };
 
-  //handle the custom setter functions, which might rely on primary keys
+  // handle the custom setter functions, which might rely on id of created object
   for (const field in customResolvers) {
-    await customResolvers[field](classname, args[field], resultObject);
+    await customResolvers[field].resolver(
+      typename,
+      req,
+      customResolvers[field].value,
+      resultObject
+    );
   }
 
   return resultObject;
 }
 
-//validates the add fields, and then does the add operation
-export async function updateTableRow(classname, args, whereArray) {
+// validates the update fields, and then does the update operation
+export async function updateTableRow(
+  typename: string,
+  req,
+  args,
+  whereArray: SqlWhereObject[]
+) {
   //resolve the setters
-  const validQuery = getTypeDefs()[classname];
+  const typeDef: TypeDef = getTypeDefs()[typename];
 
   //assemble the mysql fields
-  const mysqlFields = {};
+  const sqlFields = {};
 
   //handle the custom setters
-  const customResolvers = {};
+  const customResolvers: CustomResolverMap = {};
 
   for (const field in args) {
-    if (field in validQuery) {
-      if (validQuery[field].updateable) {
-        //if there's a setter to transform the input, use that
-        mysqlFields[field] = validQuery[field].transform?.setter
-          ? await validQuery[field].transform?.setter(args[field])
+    if (field in typeDef) {
+      if (typeDef[field].updateable) {
+        // transform the input if there is a transform setter
+        const transformSetter = typeDef[field].transform?.setter;
+        const value = transformSetter
+          ? await transformSetter(args[field])
           : args[field];
-      } else if (validQuery[field].updater) {
-        customResolvers[field] = validQuery[field].updater;
+
+        // if it is a mysql field, add to mysqlFields
+        if (typeDef[field].mysqlOptions) {
+          sqlFields[field] = value;
+        }
+
+        // if it has a custom updater, add to customResolvers
+        const customResolver = typeDef[field].updater;
+        if (customResolver) {
+          customResolvers[field] = {
+            resolver: customResolver,
+            value,
+          };
+        }
       }
     }
   }
 
-  //do the mysql first
-  await mysqlHelper.updateTableRow(classname, mysqlFields, {}, whereArray);
+  // do the mysql first, if any fields
+  if (Object.keys(sqlFields).length > 0) {
+    await mysqlHelper.updateTableRow(typename, sqlFields, {}, whereArray);
+  }
 
   const resultObject = {
     id: args.id,
@@ -97,28 +168,42 @@ export async function updateTableRow(classname, args, whereArray) {
 
   //handle the custom setter functions, which might rely on primary keys
   for (const field in customResolvers) {
-    await customResolvers[field](classname, args[field], resultObject);
+    await customResolvers[field].resolver(
+      typename,
+      req,
+      customResolvers[field].value,
+      resultObject
+    );
   }
 
   return resultObject;
 }
 
-//performs the delete operation
-export async function deleteTableRow(classname, args, whereArray) {
+// performs the delete operation
+export async function deleteTableRow(
+  typename: string,
+  req,
+  args,
+  whereArray: SqlWhereObject[]
+) {
   //resolve the deleters
-  const validQuery = getTypeDefs()[classname];
+  const typeDef: TypeDef = getTypeDefs()[typename];
 
   //handle the custom deleters
-  const customResolvers = {};
+  const customResolvers: CustomResolverMap = {};
 
-  for (const field in validQuery) {
-    if (validQuery[field].deleter) {
-      customResolvers[field] = validQuery[field].deleter;
+  for (const field in typeDef) {
+    // if it has a custom deleter, add to customResolvers
+    const customResolver = typeDef[field].deleter;
+    if (customResolver) {
+      customResolvers[field] = {
+        resolver: customResolver,
+      };
     }
   }
 
-  //do the mysql first
-  await mysqlHelper.removeTableRow(classname, whereArray);
+  // do the mysql first
+  await mysqlHelper.removeTableRow(typename, whereArray);
 
   const resultObject = {
     id: args.id,
@@ -126,85 +211,60 @@ export async function deleteTableRow(classname, args, whereArray) {
 
   //handle the custom deleter functions, which might rely on primary keys
   for (const field in customResolvers) {
-    await customResolvers[field](classname, null, resultObject);
+    await customResolvers[field].resolver(typename, req, null, resultObject);
   }
 
   return resultObject;
 }
 
 export async function resolveTableRows(
-  typename,
-  context,
+  typename: string,
   req,
-  jomqlQuery,
+  externalQuery: { [x: string]: any },
+  sqlParams: SqlParams,
   args = {},
-  typeDef?: any
+  externalTypeDef?: TypeDef
 ) {
-  //validate graphql
-  const validatedGraphql = jomqlHelper.validateJsonqlQuery(
-    jomqlQuery.select,
-    typename,
-    typeDef
+  // shortcut: if no fields were requested, simply return typename
+  if (Object.keys(externalQuery).length < 1) return [{ __typename: typename }];
+
+  // convert externalQuery into a resolver tree
+  const {
+    validatedSqlQuery,
+    validatedResolverQuery,
+  } = generateJomqlResolverTree(
+    externalQuery,
+    externalTypeDef ?? getTypeDefs()[typename]
   );
 
-  const validQuery = getTypeDefs()[typename];
+  const sqlQuery = {
+    select: validatedSqlQuery,
+    from: typename,
+    ...sqlParams,
+  };
 
-  jomqlQuery.select = validatedGraphql.validatedQuery;
+  // validation of whereArray must happen in the application logic
 
-  let hasMysqlFields = false;
-  //handle mysql fields - if any
-  for (const prop in jomqlQuery.select) {
-    if (!jomqlQuery.select[prop].resolver) {
-      hasMysqlFields = true;
-      break;
-    }
-  }
+  const returnArray: JomqlOutput[] =
+    validatedSqlQuery.length > 0
+      ? collapseObjectArray(await mysqlHelper.fetchTableRows(sqlQuery))
+      : [{}];
 
-  //validate where fields and remove any that are not filterable
-  if (Array.isArray(jomqlQuery.where)) {
-    jomqlQuery.where.forEach((ele) => {
-      for (const field in ele) {
-        if (field in validQuery) {
-          if (!validQuery[field].filterable) {
-            delete ele[field];
-          }
-        }
-      }
-    });
-  }
-
-  const returnArray = hasMysqlFields
-    ? sharedHelper.collapseObjectArray(
-        await mysqlHelper.fetchTableRows(typename, jomqlQuery)
-      )
-    : [{ __typename: typename }];
-
-  //apply transformations of results
+  // handle resolved fields
   for (const returnObject of returnArray) {
-    await jomqlHelper.handleTransformQueries(
+    await handleResolvedQueries(
       returnObject,
-      validatedGraphql.validatedQuery,
+      validatedResolverQuery,
       typename,
       req,
       args
     );
   }
 
-  //handle resolved fields
-  for (const returnObject of returnArray) {
-    await jomqlHelper.handleResolvedQueries(
-      returnObject,
-      validatedGraphql.validatedResolvedQuery,
-      typename,
-      req,
-      args
-    );
-  }
-
-  //handle aggregated fields
-  await jomqlHelper.handleAggregatedQueries(
+  // handle aggregated fields
+  await handleAggregatedQueries(
     returnArray,
-    validatedGraphql.validatedAggregatedQuery,
+    validatedResolverQuery,
     typename,
     req,
     args
@@ -213,20 +273,7 @@ export async function resolveTableRows(
   return returnArray;
 }
 
-export async function countTableRows(classname, filterArray) {
-  const validQuery = getTypeDefs()[classname];
-
-  //validate where fields and remove any that are not filterable
-  if (Array.isArray(filterArray)) {
-    filterArray.forEach((ele) => {
-      for (const field in ele) {
-        if (field in validQuery) {
-          if (!validQuery[field].filterable) {
-            delete ele[field];
-          }
-        }
-      }
-    });
-  }
-  return mysqlHelper.countTableRows(classname, filterArray);
+export function countTableRows(typename: string, whereArray: SqlWhereObject[]) {
+  // validation of whereArray must happen in the application logic
+  return mysqlHelper.countTableRows(typename, whereArray);
 }

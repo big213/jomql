@@ -1,26 +1,37 @@
-import { getTypeDefs, getLookupValue } from "../../index";
+import { getLookupValue, getTypeDefs } from "../../index";
+import type {
+  TypeDef,
+  JomqlResolverTree,
+  SqlQuerySelectObject,
+  JomqlResolverObject,
+  JomqlQuery,
+  JomqlOutput,
+} from "../../types";
 
-export function validateJsonqlQuery(externalQuery, typename, typeDef = null) {
-  const validatedQuery = {};
-  const validatedResolvedQuery = {};
-  const validatedAggregatedQuery = {};
-  const validatedTransformQuery = {};
-  const validQuery = typeDef ?? getTypeDefs()[typename];
+export function generateJomqlResolverTree(
+  externalQuery: JomqlQuery,
+  typeDef: TypeDef,
+  parentFields: string[] = []
+): JomqlResolverTree {
+  if (!typeDef) throw new Error("Invalid typeDef");
+
+  const validatedSqlQuery: SqlQuerySelectObject[] = [];
+  const validatedResolverQuery: JomqlResolverObject = {};
 
   //define the lookupValue
   const lookupValue = getLookupValue();
 
-  //ensure the id field is there, if it is part of the validQuery
-  if ("id" in validQuery && !("id" in externalQuery)) {
+  //ensure the id field is there, if it is part of the typeDef
+  if ("id" in typeDef && !("id" in externalQuery)) {
     externalQuery.id = lookupValue;
   }
 
   //if the * field is provided, make sure all non-arg, non-hidden fields are there
   if ("*" in externalQuery && externalQuery["*"] === lookupValue) {
-    for (const field in validQuery) {
+    for (const field in typeDef) {
       if (
-        !validQuery[field].hidden &&
-        !validQuery[field].args &&
+        !typeDef[field].hidden &&
+        !typeDef[field].args &&
         !(field in externalQuery)
       ) {
         externalQuery[field] = lookupValue;
@@ -29,227 +40,222 @@ export function validateJsonqlQuery(externalQuery, typename, typeDef = null) {
     delete externalQuery["*"];
   }
 
-  let validFieldsCount = 0;
-
   for (const field in externalQuery) {
+    // skip __args, even though it should already be parsed out
     if (field === "__args") {
       continue;
     }
 
-    if (field in validQuery) {
-      if (validQuery[field].hidden) {
-        throw new Error("Invalid Query");
-      }
+    if (!(field in typeDef))
+      throw new Error("Invalid Query: Unknown field '" + field + "'");
 
-      validFieldsCount++;
-      if (validQuery[field].resolver) {
-        //if it is a mysql field, fetch the field
-        if (validQuery[field].mysqlOptions) {
-          validatedQuery[field] = validQuery[field];
-        }
-
-        //if a mysql field and field is null, fetch the raw field
-        if (
-          validQuery[field].mysqlOptions &&
-          externalQuery[field] === lookupValue
-        ) {
-          validatedQuery[field] = {};
-        } else {
-          //if it has a resolver, put it in the resolvedQueries, along with a copy of the nested query (if any)
-          if (validQuery[field].type) {
-            //it has a classname, must do further resolving with the external query
-            if (
-              externalQuery[field] &&
-              typeof externalQuery[field] === "object"
-            ) {
-              validatedResolvedQuery[field] = {
-                resolver: validQuery[field].resolver,
-                externalQuery: externalQuery[field],
-              };
-            } else {
-              //no external query
-              validatedResolvedQuery[field] = {
-                resolver: validQuery[field].resolver,
-              };
-            }
-          } else {
-            validatedResolvedQuery[field] = {
-              resolver: validQuery[field].resolver,
-              externalQuery: externalQuery[field],
-            };
-          }
-        }
-      } else if (validQuery[field].dataloader) {
-        //if it has a dataloader, put it in validatedAggregatedQuery and the validatedQuery
-
-        if (externalQuery[field] === lookupValue) {
-          validatedQuery[field] = {};
-        } else if (typeof externalQuery[field] === "object") {
-          validatedQuery[field] = {};
-          validatedAggregatedQuery[field] = {
-            resolver: validQuery[field].dataloader.resolver,
-            args: validQuery[field].dataloader.args,
-            externalQuery: externalQuery[field],
-          };
-        }
-      } else if (
-        validQuery[field].mysqlOptions?.joinInfo &&
-        validQuery[field].type
-      ) {
-        //joinable field
-
-        //if it is a joinable field, but the external field treats it as non-__typename, fetch only id
-        if (externalQuery[field] === lookupValue) {
-          validatedQuery[field] = {};
-        } else if (typeof externalQuery[field] === "object") {
-          const validatedFields = validateJsonqlQuery(
-            externalQuery[field],
-            validQuery[field].type
-          );
-
-          //validate __typename fields
-          validatedQuery[field] = {
-            ...validQuery[field],
-            __nestedQuery: validatedFields.validatedQuery,
-          };
-
-          validatedResolvedQuery[field] = {
-            __typename: validatedFields.validatedResolvedQuery,
-          };
-        } else {
-          throw new Error("Invalid query");
-        }
-      } else {
-        //raw field, copy over the typeDef object for this property
-        if (externalQuery[field] === lookupValue) {
-          validatedQuery[field] = validQuery[field];
-        } else {
-          throw new Error("Invalid query");
-        }
-      }
-    } else {
-      throw new Error("Invalid query");
+    // deny hidden fields
+    if (typeDef[field].hidden) {
+      throw new Error("Invalid Query: Hidden field '" + field + "'");
     }
-  }
 
-  //must have at least one non-arg field
-  if (validFieldsCount < 1) {
-    throw new Error("Invalid query");
+    // deny fields with no type
+    if (!typeDef[field].type) {
+      throw new Error("Invalid Query: Mis-configured field '" + field + "'");
+    }
+
+    // we will keep track of if the field was used for anything
+    let fieldUsed = false;
+
+    validatedResolverQuery[field] = {
+      type: typeDef[field].type,
+    };
+
+    // add the transform getter to the resolver tree
+    if (typeDef[field].transform?.getter) {
+      fieldUsed = true;
+      validatedResolverQuery[field].getter = typeDef[field].transform?.getter;
+    }
+
+    // if dataloader field present, add to resolver tree if nested (not a direct value lookup)
+    if (
+      typeDef[field].dataloader &&
+      externalQuery[field] !== lookupValue &&
+      externalQuery[field] &&
+      typeof externalQuery[field] === "object"
+    ) {
+      fieldUsed = true;
+      validatedResolverQuery[field].dataloader = typeDef[field].dataloader;
+      validatedResolverQuery[field].query = externalQuery[field];
+    }
+
+    // add custom resolvers to the resolver tree if it appears correctly
+    if (
+      typeDef[field].resolver &&
+      (externalQuery[field] === lookupValue ||
+        (externalQuery[field] && typeof externalQuery[field] === "object"))
+    ) {
+      fieldUsed = true;
+
+      validatedResolverQuery[field].resolver = typeDef[field].resolver;
+      validatedResolverQuery[field].query = externalQuery[field];
+    }
+
+    // has mysqlOptions, is a mysql field
+    if (typeDef[field].mysqlOptions) {
+      fieldUsed = true;
+      const joinType = typeDef[field].mysqlOptions?.joinInfo?.type;
+
+      // lookup the raw value directly
+      if (externalQuery[field] === lookupValue || typeDef[field].dataloader)
+        validatedSqlQuery.push({
+          field: parentFields.concat(field).join("."),
+          getter: typeDef[field].mysqlOptions?.getter,
+        });
+      else if (
+        joinType &&
+        externalQuery[field] &&
+        typeof externalQuery[field] === "object"
+      ) {
+        // need to join with another field
+        const validatedNestedFields = generateJomqlResolverTree(
+          externalQuery[field],
+          getTypeDefs()[joinType],
+          parentFields.concat(field)
+        );
+
+        validatedSqlQuery.push(...validatedNestedFields.validatedSqlQuery);
+
+        validatedResolverQuery[field].nested =
+          validatedNestedFields.validatedResolverQuery;
+      }
+    }
+
+    // if field did not appear in resolver or sql, the query is invalid
+    if (!fieldUsed) {
+      throw new Error("Invalid Query: Mis-configured field '" + field + "'");
+    }
   }
 
   return {
-    validatedQuery,
-    validatedAggregatedQuery,
-    validatedResolvedQuery,
+    validatedSqlQuery,
+    validatedResolverQuery,
   };
 }
 
-//handle transformations
-export async function handleTransformQueries(
-  obj,
-  resolvedQuery,
-  typename,
-  req,
-  args,
-  previous?: Object
-) {
-  for (const field in resolvedQuery) {
-    //if there is a transform getter, apply the function
-    if (resolvedQuery[field].transform?.getter) {
-      obj[field] = resolvedQuery[field]?.transform?.getter(obj[field]);
-    }
-
-    //if it has __nested fields, go deeper
-    if (resolvedQuery[field].__nestedQuery) {
-      await handleTransformQueries(
-        obj[field],
-        resolvedQuery[field].__nestedQuery,
-        typename,
-        req,
-        args
-      );
-    }
-  }
-}
-
-//resolves the queries, and attaches them to the obj (if possible)
+// resolves the queries, and attaches them to the obj (if possible)
 export async function handleResolvedQueries(
-  obj,
-  resolvedQuery,
-  typename,
+  obj: JomqlOutput,
+  resolverQuery: JomqlResolverObject,
+  typename: string,
   req,
   args,
   previous?: Object
 ) {
-  for (const field in resolvedQuery) {
-    //if field has a resolver, attempt to resolve and put in obj
-    if (resolvedQuery[field].resolver) {
+  // add the typename field if the obj is an object and there is a corresponding type
+  if (typename && obj && typeof obj === "object") {
+    obj.__typename = typename;
+  }
+
+  for (const field in resolverQuery) {
+    // if field has a resolver, attempt to resolve and put in obj
+    const resolverFn = resolverQuery[field].resolver;
+    if (resolverFn) {
+      obj[field] = await resolverFn(
+        req,
+        args,
+        resolverQuery[field].query,
+        resolverQuery[field].type,
+        obj,
+        previous
+      );
+
+      /*
       //if dataloader flag set, fetch the raw field and defer
-      if (!resolvedQuery[field].dataloader) {
-        obj[field] = await resolvedQuery[field].resolver(
+      if (!resolverQuery[field].dataloader) {
+        obj[field] = await resolverQuery[field].resolver(
           req,
           args,
-          resolvedQuery[field].externalQuery,
+          resolverQuery[field].externalQuery,
           typename,
           obj,
           previous
         );
       }
+      */
     } else {
-      //if field does not have a resolver, it must be a type. go deeper
-      await handleResolvedQueries(
-        obj[field],
-        resolvedQuery[field].type,
-        typename,
-        req,
-        args,
-        {
-          obj, //parent obj
-          resolvedQuery,
-        }
-      );
+      // if field does not have a resolver, it must be part of the tree. go deeper
+      const nestedResolver = resolverQuery[field].nested;
+      if (nestedResolver)
+        await handleResolvedQueries(
+          obj[field],
+          nestedResolver,
+          resolverQuery[field].type,
+          req,
+          args,
+          {
+            obj, //parent obj
+            resolverQuery,
+          }
+        );
+    }
+
+    // if resolver has a getter, apply it to the end result
+    const getter = resolverQuery[field].getter;
+    if (getter) {
+      obj[field] = await getter(obj[field]);
     }
   }
 }
 
 export async function handleAggregatedQueries(
-  resultsArray,
-  aggregatedQuery,
-  typename,
+  resultsArray: JomqlOutput[],
+  resolverQuery: JomqlResolverObject,
+  typename: string,
   req,
   args,
   previous?: Object
 ) {
-  for (const field in aggregatedQuery) {
-    if (aggregatedQuery[field].resolver) {
-      const joinSet = new Set();
-      //aggregate args
+  for (const field in resolverQuery) {
+    const dataloaderFn = resolverQuery[field].dataloader;
+    if (dataloaderFn) {
+      const keySet = new Set();
+
+      // aggregate ids
       resultsArray.forEach((result) => {
-        joinSet.add(result[field]);
+        keySet.add(result[field]);
       });
 
-      const aggregatedResults = await aggregatedQuery[field].resolver(
-        typename,
+      // lookup all the ids
+      const aggregatedResults = await dataloaderFn(
         req,
+        { id: [...keySet] },
+        resolverQuery[field].query,
+        typename,
         {},
-        aggregatedQuery[field].externalQuery,
-        { id: [...joinSet] },
         previous
       );
 
-      //build id -> record map
-      const recordMap = {};
+      // build id -> record map
+      const recordMap = new Map();
       aggregatedResults.forEach((result) => {
-        recordMap[result.id] = result;
+        recordMap.set(result.id, result);
       });
 
-      //join the records in memory
+      // join the records in memory
       resultsArray.forEach((result) => {
-        result[field] = recordMap[result[field]];
+        result[field] = recordMap.get(result[field]);
       });
     } else {
-      //if field does not have a resolver, it must be nested.
-      //probably won't ever need this case
+      // if field does not have a dataloader, it must be nested.
+      const nestedResolver = resolverQuery[field].nested;
+      if (nestedResolver) {
+        // build the array of records that will need replacing
+        const nestedResultsArray = resultsArray.map((result) => result[field]);
+
+        await handleAggregatedQueries(
+          nestedResultsArray,
+          nestedResolver,
+          resolverQuery[field].type,
+          req,
+          args
+        );
+      }
     }
   }
 }

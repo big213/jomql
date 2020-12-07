@@ -14,7 +14,7 @@ import * as mysql from "./utils/mysql2";
 
 import { initializeSequelize, getSequelizeInstance } from "./utils/sequelize";
 
-let exportedSchema: any, exportedLookupValue: any, exportedDebug: boolean;
+let exportedSchema: Schema, exportedLookupValue: any, exportedDebug: boolean;
 
 export function initializeJomql(app: any, schema: Schema, params: Params) {
   const {

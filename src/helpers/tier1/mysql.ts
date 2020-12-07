@@ -1,128 +1,152 @@
 import { getTypeDefs } from "../..";
 import * as mysql from "../../utils/mysql2";
+import type {
+  SqlQueryObject,
+  SqlWhereObject,
+  SqlJoinFieldObject,
+  SqlSelectFieldObject,
+  SqlGroupFieldObject,
+  SqlSortFieldObject,
+} from "../../types";
 
 import errorHelper from "../tier0/error";
 
-export function fetchTableRows(table, jqlQuery) {
-  let where_statement = "";
-  let order_statement = "";
-  let limit_statement = "";
-  let groupby_statement = "";
+export type JoinsMap = {
+  [x: string]: string[];
+};
 
-  const tableObject = {
-    name: table,
-    alias: null,
-  };
+export type AssemblyFunction = (
+  tableName: string,
+  finalFieldname: string,
+  fieldObject: any,
+  fieldIndex: number
+) => string;
+
+export function fetchTableRows(sqlQuery: SqlQueryObject) {
+  let whereStatement = "";
+  let orderStatement = "";
+  let limitStatement = "";
+  let groupByStatement = "";
+  let joinStatement = "";
 
   const params = {};
 
-  let {
-    select_statement,
-    join_statement,
-    previous_joins,
-  } = buildSqlQuery(jqlQuery.select, tableObject, [], { [table]: [null] });
+  const previousJoins: JoinsMap = {};
 
-  //handle where statements
-  if (jqlQuery.where) {
-    const whereResults = processJqlWhereArray(
-      table,
-      jqlQuery.where,
-      previous_joins,
+  // handle select statements
+  const selectResults = processSelectArray(
+    sqlQuery.from,
+    sqlQuery.select,
+    previousJoins
+  );
+
+  if (selectResults.statements.length < 1) throw new Error("Invalid SQL");
+
+  joinStatement += selectResults.joinStatement;
+
+  const selectStatement = selectResults.statements.join(", ");
+
+  // handle where statements
+  if (sqlQuery.where) {
+    const whereResults = processWhereArray(
+      sqlQuery.from,
+      sqlQuery.where,
+      previousJoins,
       params
     );
 
-    where_statement += whereResults.statements.join(" AND ");
-    join_statement += whereResults.join_statement;
+    whereStatement += whereResults.statements.join(" AND ");
+    joinStatement += whereResults.joinStatement;
   }
 
-  if (!where_statement) {
-    where_statement = "1";
+  if (!whereStatement) {
+    whereStatement = "1";
   }
 
   //handle orderBy statements
   //field MUST be pre-validated
-  if (jqlQuery.orderBy) {
-    const orderResults = processJqlSortArray(
-      table,
-      jqlQuery.orderBy,
-      previous_joins
+  if (sqlQuery.orderBy) {
+    const orderResults = processSortArray(
+      sqlQuery.from,
+      sqlQuery.orderBy,
+      previousJoins
     );
 
-    order_statement += orderResults.statements.join(", ");
-    join_statement += orderResults.join_statement;
+    orderStatement += orderResults.statements.join(", ");
+    joinStatement += orderResults.joinStatement;
   }
 
   //handle limit statement
-  if (jqlQuery.limit) {
-    limit_statement += " LIMIT " + parseInt(jqlQuery.limit) || 0;
+  if (sqlQuery.limit) {
+    limitStatement += " LIMIT " + sqlQuery.limit ?? 0;
   }
 
   //handle limit/offset statements
-  if (jqlQuery.groupBy) {
-    const groupResults = processJqlGroupArray(
-      table,
-      jqlQuery.groupBy,
-      previous_joins
+  if (sqlQuery.groupBy) {
+    const groupResults = processGroupArray(
+      sqlQuery.from,
+      sqlQuery.groupBy,
+      previousJoins
     );
 
-    groupby_statement += groupResults.statements.join(", ");
-    join_statement += groupResults.join_statement;
+    groupByStatement += groupResults.statements.join(", ");
+    joinStatement += groupResults.joinStatement;
   }
 
   /*
   if(jqlQuery.offset) {
-    limit_statement += " OFFSET " + parseInt(jqlQuery.offset) || 0;
+    limitStatement += " OFFSET " + parseInt(jqlQuery.offset) || 0;
   }
   */
 
-  const sqlQuery =
+  const sqlQueryString =
     "SELECT " +
-    select_statement +
+    selectStatement +
     " FROM " +
-    table +
-    join_statement +
+    sqlQuery.from +
+    joinStatement +
     " WHERE " +
-    where_statement +
-    (groupby_statement ? " GROUP BY " + groupby_statement : "") +
-    (order_statement ? " ORDER BY " + order_statement : "") +
-    limit_statement;
+    whereStatement +
+    (groupByStatement ? " GROUP BY " + groupByStatement : "") +
+    (orderStatement ? " ORDER BY " + orderStatement : "") +
+    limitStatement;
 
-  return mysql.executeDBQuery(sqlQuery, params);
+  return mysql.executeDBQuery(sqlQueryString, params);
 }
 
 export async function countTableRows(table, whereArray) {
-  let where_statement = "";
-  let join_statement = "";
-  const previous_joins = {};
+  let whereStatement = "";
+  let joinStatement = "";
+  const previousJoins: JoinsMap = {};
   const params = {};
 
-  const select_statement = "count(*) AS count";
+  const selectStatement = "count(*) AS count";
 
   //handle where statements
   if (whereArray) {
-    const whereResults = processJqlWhereArray(
+    const whereResults = processWhereArray(
       table,
       whereArray,
-      previous_joins,
+      previousJoins,
       params
     );
 
-    where_statement += whereResults.statements.join(" AND ");
-    join_statement += whereResults.join_statement;
+    whereStatement += whereResults.statements.join(" AND ");
+    joinStatement += whereResults.joinStatement;
   }
 
-  if (!where_statement) {
-    where_statement = "1";
+  if (!whereStatement) {
+    whereStatement = "1";
   }
 
   const sqlQuery =
     "SELECT " +
-    select_statement +
+    selectStatement +
     " FROM " +
     table +
-    join_statement +
+    joinStatement +
     " WHERE " +
-    where_statement;
+    whereStatement;
 
   const results = await mysql.executeDBQuery(sqlQuery, params);
 
@@ -130,23 +154,28 @@ export async function countTableRows(table, whereArray) {
 }
 
 //admin use only
-export function insertTableRow(table, fields, raw_fields = {}, ignore = false) {
-  let set_statement = "";
+export function insertTableRow(
+  table,
+  setFields,
+  rawSetFields = {},
+  ignore = false
+) {
+  let setStatement = "";
   const params = {};
 
-  for (const fieldname in fields) {
-    set_statement += fieldname + " = :" + fieldname + ", ";
-    params[fieldname] = fields[fieldname];
+  for (const fieldname in setFields) {
+    setStatement += fieldname + " = :" + fieldname + ", ";
+    params[fieldname] = setFields[fieldname];
   }
 
   //raw fields MUST be sanitized or internally added
-  for (const fieldname in raw_fields) {
-    set_statement += fieldname + " = " + raw_fields[fieldname] + ", ";
+  for (const fieldname in rawSetFields) {
+    setStatement += fieldname + " = " + rawSetFields[fieldname] + ", ";
   }
 
-  if (set_statement) {
+  if (setStatement) {
     //remove trailing comma
-    set_statement = set_statement.slice(0, -2);
+    setStatement = setStatement.slice(0, -2);
   } else {
     throw errorHelper.invalidSqlError();
   }
@@ -157,51 +186,56 @@ export function insertTableRow(table, fields, raw_fields = {}, ignore = false) {
     "INTO " +
     table +
     " SET " +
-    set_statement;
+    setStatement;
 
   return mysql.executeDBQuery(query, params);
 }
 
 //admin use only
-export function updateTableRow(table, set_fields, raw_fields = {}, whereArray) {
-  let set_statement = "";
-  let where_statement = "";
-  let join_statement = "";
-  const previous_joins = {};
+export function updateTableRow(
+  table,
+  setFields,
+  rawSetFields = {},
+  whereArray: SqlWhereObject[]
+) {
+  let setStatement = "";
+  let whereStatement = "";
+  let joinStatement = "";
+  const previousJoins: JoinsMap = {};
   const params = {};
 
   //handle set fields
-  for (const fieldname in set_fields) {
-    set_statement += fieldname + " = :" + fieldname + ", ";
-    params[fieldname] = set_fields[fieldname];
+  for (const fieldname in setFields) {
+    setStatement += fieldname + " = :" + fieldname + ", ";
+    params[fieldname] = setFields[fieldname];
   }
 
   //raw fields MUST be sanitized or internally added
-  for (const fieldname in raw_fields) {
-    set_statement += fieldname + " = " + raw_fields[fieldname] + ", ";
+  for (const fieldname in rawSetFields) {
+    setStatement += fieldname + " = " + rawSetFields[fieldname] + ", ";
   }
 
-  if (set_statement) {
+  if (setStatement) {
     //remove trailing comma
-    set_statement = set_statement.slice(0, -2);
+    setStatement = setStatement.slice(0, -2);
   } else {
     throw errorHelper.invalidSqlError();
   }
 
   //handle where statements
   if (whereArray) {
-    const whereResults = processJqlWhereArray(
+    const whereResults = processWhereArray(
       table,
       whereArray,
-      previous_joins,
+      previousJoins,
       params
     );
 
-    where_statement += whereResults.statements.join(" AND ");
-    join_statement += whereResults.join_statement;
+    whereStatement += whereResults.statements.join(" AND ");
+    joinStatement += whereResults.joinStatement;
   }
 
-  if (!where_statement) {
+  if (!whereStatement) {
     throw errorHelper.invalidSqlError();
   }
 
@@ -209,181 +243,89 @@ export function updateTableRow(table, set_fields, raw_fields = {}, whereArray) {
   const query =
     "UPDATE " +
     table +
-    join_statement +
+    joinStatement +
     " SET " +
-    set_statement +
+    setStatement +
     " WHERE " +
-    where_statement;
+    whereStatement;
 
   return mysql.executeDBQuery(query, params);
 }
 
 //admin use only
-export function removeTableRow(table, whereArray) {
-  let where_statement = "";
-  let join_statement = "";
-  const previous_joins = {};
+export function removeTableRow(table, whereArray: SqlWhereObject[]) {
+  let whereStatement = "";
+  let joinStatement = "";
+  const previousJoins: JoinsMap = {};
   const params = {};
 
   //handle where statements
   if (whereArray) {
-    const whereResults = processJqlWhereArray(
+    const whereResults = processWhereArray(
       table,
       whereArray,
-      previous_joins,
+      previousJoins,
       params
     );
 
-    where_statement += whereResults.statements.join(" AND ");
-    join_statement += whereResults.join_statement;
+    whereStatement += whereResults.statements.join(" AND ");
+    joinStatement += whereResults.joinStatement;
   }
 
-  if (!where_statement) {
+  if (!whereStatement) {
     throw errorHelper.invalidSqlError();
   }
 
   const query =
-    "DELETE FROM " + table + join_statement + " WHERE " + where_statement;
+    "DELETE FROM " + table + joinStatement + " WHERE " + whereStatement;
 
   return mysql.executeDBQuery(query, params);
 }
 
-export function buildSqlQuery(
-  query,
-  tableObject,
-  parentEntries = <Array<string>>[],
-  previousJoins = {}
+export function processSelectArray(
+  table: string,
+  selectFieldsArray: SqlSelectFieldObject[],
+  previousJoins: JoinsMap
 ) {
-  const returnObject = {
-    select_statement: "",
-    join_statement: "",
-    previous_joins: previousJoins,
-  };
-
-  for (const entry in query) {
-    const parentEntriesCopy = parentEntries.slice();
-
-    if (query[entry]?.mysqlOptions?.getter) {
-      //process fields with bound functions
-      returnObject.select_statement +=
-        query[entry].mysqlOptions.getter(
-          (tableObject.alias || tableObject.name) + "." + entry
-        ) +
-        ' AS "' +
-        (parentEntriesCopy.length > 0
-          ? parentEntriesCopy.join(".") + "."
-          : "") +
-        entry +
-        '"';
-    } else if (
-      query[entry]?.mysqlOptions?.joinInfo?.type &&
-      query[entry]?.mysqlOptions?.joinInfo
-    ) {
-      //process type fields
-      //check if it is a joinable field and assemble the join statement
-      const joinTableObject = {
-        name: query[entry].mysqlOptions?.joinInfo?.type,
-        alias: null,
-      };
-
-      let index;
-
-      //check to not join a table if already joined before
-      if (!(joinTableObject.name in previousJoins)) {
-        previousJoins[joinTableObject.name] = [entry];
-        index = 0;
-      } else {
-        previousJoins[joinTableObject.name].push(entry);
-
-        index = previousJoins[joinTableObject.name].lastIndexOf(entry);
-      }
-
-      //always set the alias
-      joinTableObject.alias = joinTableObject.name + index;
-
-      returnObject.join_statement +=
-        " LEFT JOIN " +
-        joinTableObject.name +
-        (joinTableObject.alias ? " " + joinTableObject.alias : "") +
-        " ON " +
-        (tableObject.alias ?? tableObject.name) +
-        "." +
-        entry +
-        " = " +
-        (joinTableObject.alias ?? joinTableObject.name) +
-        "." +
-        (query[entry].mysqlOptions.joinInfo.foreignKey ?? "id");
-
-      //add entry to list of parent entries
-      parentEntriesCopy.push(entry);
-      const { select_statement, join_statement } = buildSqlQuery(
-        query[entry].__nestedQuery,
-        joinTableObject,
-        parentEntriesCopy,
-        previousJoins
-      );
-
-      returnObject.join_statement += join_statement;
-      returnObject.select_statement += select_statement;
-    } else {
-      //raw field, just do table.entry
-      returnObject.select_statement +=
-        (tableObject.alias || tableObject.name) +
-        "." +
-        entry +
-        ' AS "' +
-        (parentEntriesCopy.length > 0
-          ? parentEntriesCopy.join(".") + "."
-          : "") +
-        entry +
-        '"';
-    }
-    returnObject.select_statement += ", ";
-  }
-
-  if (!returnObject.select_statement) {
-    throw errorHelper.invalidSqlError();
-  }
-
-  //append the classname field
-  returnObject.select_statement +=
-    '"' +
-    tableObject.name +
-    '" AS "' +
-    (parentEntries.length > 0 ? parentEntries.join(".") + "." : "") +
-    '__typename", ';
-
-  //remove trailing comma
-  returnObject.select_statement = returnObject.select_statement.slice(0, -2);
-
-  return returnObject;
+  return processJoins(
+    table,
+    selectFieldsArray,
+    previousJoins,
+    (tableName, finalFieldname, fieldObject, fieldIndex) =>
+      (fieldObject.getter
+        ? fieldObject.getter(tableName + "." + finalFieldname)
+        : tableName + "." + finalFieldname) +
+      ' AS "' +
+      fieldObject.field +
+      '"'
+  );
 }
 
-export function processJqlWhereArray(
-  table,
-  whereArray,
-  previous_joins,
+export function processWhereArray(
+  table: string,
+  whereFieldsArray: SqlWhereObject[],
+  previousJoins: JoinsMap,
   params
 ) {
-  const statements = <Array<string>>[];
-  let join_statement = "";
+  const statements: string[] = [];
+  let joinStatement = "";
 
-  whereArray.forEach((whereObject, whereIndex) => {
-    const results = processJqlJoins(
+  whereFieldsArray.forEach((whereObject, whereIndex) => {
+    const results = processJoins(
       table,
       whereObject.fields,
-      previous_joins,
-      (tableName, finalFieldname, joinObject, joinFieldIndex) => {
-        const operator = joinObject.operator ?? "=";
+      previousJoins,
+      (tableName, finalFieldname, fieldObject, fieldIndex) => {
+        const operator = fieldObject.operator ?? "=";
         const placeholder =
           finalFieldname in params
             ? finalFieldname + whereIndex
             : finalFieldname;
-        let where_substatement;
+        let whereSubstatement;
 
         //value must be array with at least 2 elements
         if (operator === "BETWEEN") {
-          where_substatement =
+          whereSubstatement =
             tableName +
             "." +
             finalFieldname +
@@ -393,18 +335,18 @@ export function processJqlWhereArray(
             finalFieldname +
             "1";
 
-          params[finalFieldname + "0"] = joinObject.value[0];
-          params[finalFieldname + "1"] = joinObject.value[1];
+          params[finalFieldname + "0"] = fieldObject.value[0];
+          params[finalFieldname + "1"] = fieldObject.value[1];
         } else {
-          if (Array.isArray(joinObject.value)) {
-            where_substatement =
+          if (Array.isArray(fieldObject.value)) {
+            whereSubstatement =
               tableName + "." + finalFieldname + " IN (:" + placeholder + ")";
-            params[placeholder] = joinObject.value;
-          } else if (joinObject.value === null) {
+            params[placeholder] = fieldObject.value;
+          } else if (fieldObject.value === null) {
             //if fieldvalue.value === null, change the format accordingly
-            where_substatement = tableName + "." + finalFieldname + " IS NULL";
+            whereSubstatement = tableName + "." + finalFieldname + " IS NULL";
           } else {
-            where_substatement =
+            whereSubstatement =
               tableName +
               "." +
               finalFieldname +
@@ -412,11 +354,11 @@ export function processJqlWhereArray(
               operator +
               " :" +
               placeholder;
-            params[placeholder] = joinObject.value;
+            params[placeholder] = fieldObject.value;
           }
         }
 
-        return where_substatement;
+        return whereSubstatement;
       }
     );
 
@@ -428,70 +370,82 @@ export function processJqlWhereArray(
       );
     }
 
-    join_statement += results.join_statement;
+    joinStatement += results.joinStatement;
   });
 
   return {
     statements,
-    join_statement,
+    joinStatement,
   };
 }
 
-export function processJqlSortArray(table, sortArray, previous_joins) {
-  return processJqlJoins(
+export function processSortArray(
+  table: string,
+  sortFieldsArray: SqlSortFieldObject[],
+  previousJoins: JoinsMap
+) {
+  return processJoins(
     table,
-    sortArray,
-    previous_joins,
-    (tableName, finalFieldname, joinObject, joinFieldIndex) =>
+    sortFieldsArray,
+    previousJoins,
+    (tableName, finalFieldname, fieldObject, fieldIndex) =>
       tableName +
       "." +
       finalFieldname +
       " " +
-      (joinObject.desc ? "DESC" : "ASC")
+      (fieldObject.desc ? "DESC" : "ASC")
   );
 }
 
-export function processJqlGroupArray(table, groupArray, previous_joins) {
-  return processJqlJoins(
+export function processGroupArray(
+  table: string,
+  groupFieldsArray: SqlGroupFieldObject[],
+  previousJoins: JoinsMap
+) {
+  return processJoins(
     table,
-    groupArray,
-    previous_joins,
-    (tableName, finalFieldname, joinObject, joinFieldIndex) =>
+    groupFieldsArray,
+    previousJoins,
+    (tableName, finalFieldname, fieldObject, fieldIndex) =>
       tableName + "." + finalFieldname
   );
 }
 
-export function processJqlJoins(
-  table,
-  joinFieldsArray,
-  previous_joins,
-  assemblyFn: Function
+export function processJoins(
+  table: string,
+  fieldsArray: { [x: string]: any; joinFields?: SqlJoinFieldObject[] }[],
+  previousJoins: JoinsMap,
+  assemblyFn: AssemblyFunction
 ) {
-  const statements = <Array<string>>[];
-  let join_statement = "";
+  const statements: string[] = [];
+  let joinStatement = "";
 
-  joinFieldsArray.forEach((joinObject, joinFieldIndex) => {
-    const fieldPath = joinObject.field.split(".");
+  fieldsArray.forEach((fieldObject, fieldIndex) => {
+    const fieldPath = fieldObject.field.split(".");
     let currentTypeDef = getTypeDefs()[table];
     let currentTable = table;
 
     let joinTableAlias, finalFieldname;
 
-    const joinArray: any = [];
+    const joinArray: {
+      joinTableName?: string;
+      field: string;
+      foreignField: string;
+    }[] = [];
 
     //if this exists, they must be processed first before processing the fieldPath
-    if (Array.isArray(joinObject.joinFields)) {
-      joinObject.joinFields.forEach((nestedJoinObject, fieldIndex) => {
+    if (Array.isArray(fieldObject.joinFields)) {
+      fieldObject.joinFields.forEach((joinFieldObject, joinFieldIndex) => {
         joinArray.push({
-          joinTableName: nestedJoinObject.table,
-          field: nestedJoinObject.field,
-          foreignField: nestedJoinObject.foreignField,
+          joinTableName: joinFieldObject.table,
+          field: joinFieldObject.field,
+          foreignField: joinFieldObject.foreignField,
         });
       });
     }
 
     //process the "normal" fields
-    fieldPath.forEach((field, fieldIndex) => {
+    fieldPath.forEach((field, joinFieldIndex) => {
       joinArray.push({
         field: field,
         foreignField:
@@ -499,28 +453,36 @@ export function processJqlJoins(
       });
     });
 
+    const cumulativeJoinFields: string[] = [];
     joinArray.forEach((ele, eleIndex) => {
+      cumulativeJoinFields.push(ele.field);
+      const cumulativeJoinFieldChain = cumulativeJoinFields.join(".");
       //if there's no next field, no more joins
       if (joinArray[eleIndex + 1]) {
         //join with this type
         const joinTableName =
           ele.joinTableName ||
-          currentTypeDef[ele.field]?.mysqlOptions?.joinInfo.type;
+          currentTypeDef[ele.field]?.mysqlOptions?.joinInfo?.type;
 
         //if it requires a join, check if it was joined previously
         if (joinTableName) {
-          if (!(joinTableName in previous_joins)) {
-            previous_joins[joinTableName] = [];
+          if (!(joinTableName in previousJoins)) {
+            previousJoins[joinTableName] = [];
           }
 
+          // always use a new join
           let newJoin = false;
-          let index = previous_joins[joinTableName].indexOf(ele.field);
+
+          let index = previousJoins[joinTableName].lastIndexOf(
+            cumulativeJoinFieldChain
+          );
 
           //if index not exists, join the table and get the index.
           if (index === -1) {
-            previous_joins[joinTableName].push(ele.field);
-
-            index = previous_joins[joinTableName].indexOf(ele.field);
+            previousJoins[joinTableName].push(cumulativeJoinFieldChain);
+            index = previousJoins[joinTableName].lastIndexOf(
+              cumulativeJoinFieldChain
+            );
             newJoin = true;
           }
 
@@ -529,7 +491,7 @@ export function processJqlJoins(
 
           if (newJoin) {
             //assemble join statement, if required
-            join_statement +=
+            joinStatement +=
               " LEFT JOIN " +
               joinTableName +
               " " +
@@ -543,11 +505,11 @@ export function processJqlJoins(
               "." +
               ele.foreignField;
           }
-        }
 
-        //shift the typeDef
-        currentTypeDef = getTypeDefs()[joinTableName];
-        currentTable = joinTableAlias;
+          //shift the typeDef
+          currentTypeDef = getTypeDefs()[joinTableName];
+          currentTable = joinTableAlias;
+        }
       } else {
         //no more fields, set the finalFieldname
         finalFieldname = ele.field;
@@ -556,13 +518,13 @@ export function processJqlJoins(
 
     const tableName = joinTableAlias || table;
     statements.push(
-      assemblyFn(tableName, finalFieldname, joinObject, joinFieldIndex)
+      assemblyFn(tableName, finalFieldname, fieldObject, fieldIndex)
     );
   });
 
   return {
     statements,
-    join_statement,
+    joinStatement,
   };
 }
 

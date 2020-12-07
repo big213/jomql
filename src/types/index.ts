@@ -1,3 +1,6 @@
+import type { ModelAttributeColumnOptions } from "sequelize";
+import { sequelizeDataTypes } from "..";
+
 export type MysqlEnv = {
   readonly database: string;
   readonly user: string;
@@ -41,18 +44,31 @@ export type TypeDef = {
 };
 
 export type TypeDefObject = {
-  type: string | string[];
+  type: string;
+  isArray?: boolean;
   allowNull?: boolean;
-  mysqlOptions?: object;
+  mysqlOptions?: TypeDefSqlOptions;
   addable?: boolean;
   updateable?: boolean;
-  filterable?: boolean;
   hidden?: boolean;
   transform?: {
     setter?: Function;
     getter?: Function;
   };
+  args?: object;
+  dataloader?: any;
   resolver?: ResolverFunction;
+  deleter?: Function;
+  setter?: Function;
+  updater?: Function;
+};
+
+export type TypeDefSqlOptions = ModelAttributeColumnOptions & {
+  joinInfo?: {
+    type: string;
+    foreignKey?: string;
+  };
+  getter?: Function;
 };
 
 export type Schema = {
@@ -70,5 +86,85 @@ export type ResolverFunction = (
   args: any,
   query?: any,
   typename?: string,
-  currentObject?: any
+  currentObject?: any,
+  parentObject?: any
 ) => any;
+
+export type JomqlResolverTree = {
+  validatedSqlQuery: SqlQuerySelectObject[];
+  validatedResolverQuery: JomqlResolverObject;
+};
+
+export type JomqlResolverObject = {
+  [x: string]: {
+    resolver?: ResolverFunction;
+    dataloader?: ResolverFunction;
+    query?: any;
+    getter?: Function;
+    type: string;
+    nested?: JomqlResolverObject;
+  };
+};
+
+export type SqlWhereObject = {
+  connective?: string;
+  fields: SqlWhereFieldObject[];
+};
+
+export type SqlJoinFieldObject = {
+  table: string;
+  field: string;
+  foreignField: string;
+};
+
+export type SqlSelectFieldObject = SqlFieldObject & {
+  field: string;
+  getter?: Function;
+};
+
+export type SqlWhereFieldObject = SqlFieldObject & {
+  field: string;
+  value: any;
+  operator?: string;
+};
+
+export type SqlSortFieldObject = SqlFieldObject & {
+  field: string;
+  desc?: boolean;
+};
+
+export type SqlGroupFieldObject = SqlFieldObject & {
+  field: string;
+};
+
+export type SqlFieldObject = {
+  joinFields?: SqlJoinFieldObject[];
+};
+
+export type SqlQueryObject = SqlParams & {
+  select: SqlQuerySelectObject[];
+  from: string;
+};
+
+export type SqlQuerySelectObject = {
+  field: string;
+  getter?: Function;
+};
+
+export type SqlParams = {
+  where?: SqlWhereObject[];
+  limit?: number;
+  groupBy?: SqlGroupFieldObject[];
+  orderBy?: SqlSortFieldObject[];
+};
+
+export type JomqlQuery = {
+  [y: string]: any;
+  __args?: {
+    [x: string]: any;
+  };
+};
+
+export type JomqlOutput = {
+  [x: string]: any;
+};
