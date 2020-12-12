@@ -36,7 +36,7 @@ export function fetchTableRows(sqlQuery: SqlQueryObject) {
   // handle select statements
   const selectResults = processSelectArray(
     sqlQuery.from,
-    sqlQuery.select,
+    sqlQuery.select.concat(sqlQuery.rawSelect),
     previousJoins
   );
 
@@ -293,9 +293,8 @@ export function processSelectArray(
       (fieldObject.getter
         ? fieldObject.getter(tableName + "." + finalFieldname)
         : tableName + "." + finalFieldname) +
-      ' AS "' +
-      fieldObject.field +
-      '"'
+        ' AS "' +
+        fieldObject.as ?? fieldObject.field + '"'
   );
 }
 

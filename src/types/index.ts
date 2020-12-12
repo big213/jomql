@@ -1,5 +1,4 @@
 import type { ModelAttributeColumnOptions } from "sequelize";
-import { sequelizeDataTypes } from "..";
 
 export type MysqlEnv = {
   readonly database: string;
@@ -148,10 +147,12 @@ export type SqlQueryObject = SqlParams & {
 
 export type SqlQuerySelectObject = {
   field: string;
+  as?: string;
   getter?: Function;
 };
 
 export type SqlParams = {
+  rawSelect: SqlQuerySelectObject[];
   where?: SqlWhereObject[];
   limit?: number;
   groupBy?: SqlGroupFieldObject[];
