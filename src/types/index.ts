@@ -107,7 +107,7 @@ export type JomqlResolverObject = {
 
 export type SqlWhereObject = {
   connective?: string;
-  fields: SqlWhereFieldObject[];
+  fields: (SqlWhereObject | SqlWhereFieldObject)[];
 };
 
 export type SqlJoinFieldObject = {
@@ -118,7 +118,6 @@ export type SqlJoinFieldObject = {
 
 export type SqlSelectFieldObject = SqlFieldObject & {
   field: string;
-  getter?: Function;
 };
 
 export type SqlWhereFieldObject = SqlFieldObject & {
@@ -152,8 +151,8 @@ export type SqlQuerySelectObject = {
 };
 
 export type SqlParams = {
-  rawSelect: SqlQuerySelectObject[];
-  where?: SqlWhereObject[];
+  rawSelect?: SqlQuerySelectObject[];
+  where?: SqlWhereObject;
   limit?: number;
   groupBy?: SqlGroupFieldObject[];
   orderBy?: SqlSortFieldObject[];

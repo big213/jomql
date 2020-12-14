@@ -7,6 +7,7 @@ import type {
   SqlSelectFieldObject,
   SqlGroupFieldObject,
   SqlSortFieldObject,
+  SqlWhereFieldObject,
 } from "../../types";
 
 import errorHelper from "../tier0/error";
@@ -36,7 +37,7 @@ export function fetchTableRows(sqlQuery: SqlQueryObject) {
   // handle select statements
   const selectResults = processSelectArray(
     sqlQuery.from,
-    sqlQuery.select.concat(sqlQuery.rawSelect),
+    sqlQuery.select.concat(sqlQuery.rawSelect ?? []),
     previousJoins
   );
 
@@ -48,14 +49,14 @@ export function fetchTableRows(sqlQuery: SqlQueryObject) {
 
   // handle where statements
   if (sqlQuery.where) {
-    const whereResults = processWhereArray(
+    const whereResults = processWhereObject(
       sqlQuery.from,
       sqlQuery.where,
       previousJoins,
       params
     );
 
-    whereStatement += whereResults.statements.join(" AND ");
+    whereStatement = whereResults.whereStatement;
     joinStatement += whereResults.joinStatement;
   }
 
@@ -116,7 +117,7 @@ export function fetchTableRows(sqlQuery: SqlQueryObject) {
 
 export async function countTableRows(
   table: string,
-  whereArray: SqlWhereObject[]
+  whereObject: SqlWhereObject
 ) {
   let whereStatement = "";
   let joinStatement = "";
@@ -126,14 +127,14 @@ export async function countTableRows(
   const selectStatement = "count(*) AS count";
 
   //handle where statements
-  const whereResults = processWhereArray(
+  const whereResults = processWhereObject(
     table,
-    whereArray,
+    whereObject,
     previousJoins,
     params
   );
 
-  whereStatement += whereResults.statements.join(" AND ");
+  whereStatement += whereResults.whereStatement;
   joinStatement += whereResults.joinStatement;
 
   if (!whereStatement) {
@@ -195,7 +196,7 @@ export function updateTableRow(
   table: string,
   setFields,
   rawSetFields = {},
-  whereArray: SqlWhereObject[]
+  whereObject: SqlWhereObject
 ) {
   let setStatement = "";
   let whereStatement = "";
@@ -222,15 +223,15 @@ export function updateTableRow(
   }
 
   //handle where statements
-  if (whereArray) {
-    const whereResults = processWhereArray(
+  if (whereObject) {
+    const whereResults = processWhereObject(
       table,
-      whereArray,
+      whereObject,
       previousJoins,
       params
     );
 
-    whereStatement += whereResults.statements.join(" AND ");
+    whereStatement += whereResults.whereStatement;
     joinStatement += whereResults.joinStatement;
   }
 
@@ -251,22 +252,22 @@ export function updateTableRow(
   return mysql.executeDBQuery(query, params);
 }
 
-export function removeTableRow(table: string, whereArray: SqlWhereObject[]) {
+export function removeTableRow(table: string, whereObject: SqlWhereObject) {
   let whereStatement = "";
   let joinStatement = "";
   const previousJoins: JoinsMap = {};
   const params = {};
 
   //handle where statements
-  if (whereArray) {
-    const whereResults = processWhereArray(
+  if (whereObject) {
+    const whereResults = processWhereObject(
       table,
-      whereArray,
+      whereObject,
       previousJoins,
       params
     );
 
-    whereStatement += whereResults.statements.join(" AND ");
+    whereStatement += whereResults.whereStatement;
     joinStatement += whereResults.joinStatement;
   }
 
@@ -289,68 +290,93 @@ export function processSelectArray(
     table,
     selectFieldsArray,
     previousJoins,
-    (tableName, finalFieldname, fieldObject, fieldIndex) =>
-      (fieldObject.getter
-        ? fieldObject.getter(tableName + "." + finalFieldname)
-        : tableName + "." + finalFieldname) +
+    (tableName, finalFieldname, fieldObject, fieldIndex) => {
+      const currentTypeDef = getTypeDefs()[tableName];
+
+      // retrieve getter, if any
+      const getter = currentTypeDef[finalFieldname].mysqlOptions?.getter;
+
+      return (
+        (getter
+          ? getter(tableName + "." + finalFieldname)
+          : tableName + "." + finalFieldname) +
         ' AS "' +
-        fieldObject.as ?? fieldObject.field + '"'
+        (fieldObject.as ?? fieldObject.field) +
+        '"'
+      );
+    }
   );
 }
 
-export function processWhereArray(
+function isSqlWhereObject(
+  obj: SqlWhereFieldObject | SqlWhereObject
+): obj is SqlWhereObject {
+  return (obj as SqlWhereObject).fields !== undefined;
+}
+
+export function processWhereObject(
   table: string,
-  whereFieldsArray: SqlWhereObject[],
+  whereObject: SqlWhereObject,
   previousJoins: JoinsMap,
-  params
+  params,
+  subIndexString = ""
 ) {
   const statements: string[] = [];
+  let whereStatement = "";
   let joinStatement = "";
 
-  whereFieldsArray.forEach((whereObject, whereIndex) => {
+  const connective = whereObject.connective ?? "AND";
+
+  whereObject.fields.forEach((whereSubObject, subIndex) => {
+    // separate the SqlWhereFieldObject from SqlWhereObject
+    const whereFieldObjects: SqlWhereFieldObject[] = [];
+    const whereObjects: SqlWhereObject[] = [];
+
+    if (isSqlWhereObject(whereSubObject)) {
+      whereObjects.push(whereSubObject);
+    } else {
+      whereFieldObjects.push(whereSubObject);
+    }
+
+    // process SqlWhereFieldObjects, if any
     const results = processJoins(
       table,
-      whereObject.fields,
+      whereFieldObjects,
       previousJoins,
       (tableName, finalFieldname, fieldObject, fieldIndex) => {
+        // else, must be SqlWhereFieldObject
         const operator = fieldObject.operator ?? "=";
-        const placeholder =
-          finalFieldname in params
-            ? finalFieldname + whereIndex
-            : finalFieldname;
-        let whereSubstatement;
+        const placeholder = finalFieldname + subIndexString + "_" + subIndex;
+
+        const currentTypeDef = getTypeDefs()[tableName];
+        const getter = currentTypeDef[finalFieldname].mysqlOptions?.getter;
+
+        let whereSubstatement = getter
+          ? getter(tableName + "." + finalFieldname)
+          : tableName + "." + finalFieldname;
 
         //value must be array with at least 2 elements
         if (operator === "BETWEEN") {
-          whereSubstatement =
-            tableName +
-            "." +
-            finalFieldname +
-            " BETWEEN :" +
-            finalFieldname +
-            "0 AND :" +
-            finalFieldname +
-            "1";
+          whereSubstatement +=
+            " BETWEEN :" + finalFieldname + "0 AND :" + finalFieldname + "1";
 
           params[finalFieldname + "0"] = fieldObject.value[0];
           params[finalFieldname + "1"] = fieldObject.value[1];
         } else {
           if (Array.isArray(fieldObject.value)) {
-            whereSubstatement =
-              tableName + "." + finalFieldname + " IN (:" + placeholder + ")";
+            whereSubstatement += " IN (:" + placeholder + ")";
             params[placeholder] = fieldObject.value;
           } else if (fieldObject.value === null) {
             //if fieldvalue.value === null, change the format accordingly
-            whereSubstatement = tableName + "." + finalFieldname + " IS NULL";
+            if (operator === "!=") {
+              whereSubstatement += " IS NOT NULL";
+            } else if (operator === "=") {
+              whereSubstatement += " IS NULL";
+            } else {
+              throw new Error("Invalid operator for null");
+            }
           } else {
-            whereSubstatement =
-              tableName +
-              "." +
-              finalFieldname +
-              " " +
-              operator +
-              " :" +
-              placeholder;
+            whereSubstatement += " " + operator + " :" + placeholder;
             params[placeholder] = fieldObject.value;
           }
         }
@@ -359,19 +385,33 @@ export function processWhereArray(
       }
     );
 
-    const connective = whereObject.connective || "AND";
-
     if (results.statements.length > 0) {
-      statements.push(
-        "(" + results.statements.join(" " + connective + " ") + ")"
-      );
+      statements.push(results.statements.join(" " + connective + " "));
     }
 
     joinStatement += results.joinStatement;
+
+    // process SqlWhereObjects
+    whereObjects.forEach((ele, whereObjectIndex) => {
+      const res = processWhereObject(
+        table,
+        ele,
+        previousJoins,
+        params,
+        subIndexString + "_" + whereObjectIndex
+      );
+      statements.push("(" + res.whereStatement + ")");
+      joinStatement += res.joinStatement;
+    });
   });
 
+  if (statements.length > 0) {
+    whereStatement = statements.join(" " + connective + " ");
+  }
+
   return {
-    statements,
+    // statements,
+    whereStatement,
     joinStatement,
   };
 }

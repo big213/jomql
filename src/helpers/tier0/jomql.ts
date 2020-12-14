@@ -114,7 +114,7 @@ export function generateJomqlResolverTree(
       )
         validatedSqlQuery.push({
           field: parentFields.concat(field).join("."),
-          getter: typeDef[field].mysqlOptions?.getter,
+          // getter: typeDef[field].mysqlOptions?.getter,
         });
       else if (joinType && isNestedField) {
         // need to join with another field

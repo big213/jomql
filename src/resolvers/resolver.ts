@@ -120,7 +120,7 @@ export async function updateTableRow(
   typename: string,
   req,
   args,
-  whereArray: SqlWhereObject[]
+  whereObject: SqlWhereObject
 ) {
   //resolve the setters
   const typeDef: TypeDef = getTypeDefs()[typename];
@@ -159,7 +159,7 @@ export async function updateTableRow(
 
   // do the mysql first, if any fields
   if (Object.keys(sqlFields).length > 0) {
-    await mysqlHelper.updateTableRow(typename, sqlFields, {}, whereArray);
+    await mysqlHelper.updateTableRow(typename, sqlFields, {}, whereObject);
   }
 
   const resultObject = {
@@ -184,7 +184,7 @@ export async function deleteTableRow(
   typename: string,
   req,
   args,
-  whereArray: SqlWhereObject[]
+  whereObject: SqlWhereObject
 ) {
   //resolve the deleters
   const typeDef: TypeDef = getTypeDefs()[typename];
@@ -203,7 +203,7 @@ export async function deleteTableRow(
   }
 
   // do the mysql first
-  await mysqlHelper.removeTableRow(typename, whereArray);
+  await mysqlHelper.removeTableRow(typename, whereObject);
 
   const resultObject = {
     id: args.id,
@@ -273,7 +273,7 @@ export async function resolveTableRows(
   return returnArray;
 }
 
-export function countTableRows(typename: string, whereArray: SqlWhereObject[]) {
+export function countTableRows(typename: string, whereObject: SqlWhereObject) {
   // validation of whereArray must happen in the application logic
-  return mysqlHelper.countTableRows(typename, whereArray);
+  return mysqlHelper.countTableRows(typename, whereObject);
 }

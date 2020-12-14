@@ -8,6 +8,10 @@ export type {
   ResolverFunction,
   TypeDefObject,
   TypeDef,
+  SqlJoinFieldObject,
+  SqlWhereObject,
+  SqlQuerySelectObject,
+  SqlSortFieldObject,
 } from "./types";
 // utils
 import * as mysql from "./utils/mysql2";
