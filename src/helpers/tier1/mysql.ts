@@ -17,8 +17,9 @@ export type JoinsMap = {
 };
 
 export type AssemblyFunction = (
-  tableName: string,
-  finalFieldname: string,
+  table: string,
+  finalTableName: string,
+  fieldname: string,
   fieldObject: any,
   fieldIndex: number
 ) => string;
@@ -290,16 +291,16 @@ export function processSelectArray(
     table,
     selectFieldsArray,
     previousJoins,
-    (tableName, finalFieldname, fieldObject, fieldIndex) => {
-      const currentTypeDef = getTypeDefs()[tableName];
+    (table, finalTableName, fieldname, fieldObject, fieldIndex) => {
+      const currentTypeDef = getTypeDefs()[table];
 
       // retrieve getter, if any
-      const getter = currentTypeDef[finalFieldname].mysqlOptions?.getter;
+      const getter = currentTypeDef[fieldname].mysqlOptions?.getter;
 
       return (
         (getter
-          ? getter(tableName + "." + finalFieldname)
-          : tableName + "." + finalFieldname) +
+          ? getter(finalTableName + "." + fieldname)
+          : finalTableName + "." + fieldname) +
         ' AS "' +
         (fieldObject.as ?? fieldObject.field) +
         '"'
@@ -343,25 +344,25 @@ export function processWhereObject(
       table,
       whereFieldObjects,
       previousJoins,
-      (tableName, finalFieldname, fieldObject, fieldIndex) => {
+      (table, finalTableName, fieldname, fieldObject, fieldIndex) => {
         // else, must be SqlWhereFieldObject
         const operator = fieldObject.operator ?? "=";
-        const placeholder = finalFieldname + subIndexString + "_" + subIndex;
+        const placeholder = fieldname + subIndexString + "_" + subIndex;
 
-        const currentTypeDef = getTypeDefs()[tableName];
-        const getter = currentTypeDef[finalFieldname].mysqlOptions?.getter;
+        const currentTypeDef = getTypeDefs()[finalTableName];
+        const getter = currentTypeDef[fieldname].mysqlOptions?.getter;
 
         let whereSubstatement = getter
-          ? getter(tableName + "." + finalFieldname)
-          : tableName + "." + finalFieldname;
+          ? getter(finalTableName + "." + fieldname)
+          : finalTableName + "." + fieldname;
 
         //value must be array with at least 2 elements
         if (operator === "BETWEEN") {
           whereSubstatement +=
-            " BETWEEN :" + finalFieldname + "0 AND :" + finalFieldname + "1";
+            " BETWEEN :" + fieldname + "0 AND :" + fieldname + "1";
 
-          params[finalFieldname + "0"] = fieldObject.value[0];
-          params[finalFieldname + "1"] = fieldObject.value[1];
+          params[fieldname + "0"] = fieldObject.value[0];
+          params[fieldname + "1"] = fieldObject.value[1];
         } else {
           if (Array.isArray(fieldObject.value)) {
             whereSubstatement += " IN (:" + placeholder + ")";
@@ -425,10 +426,10 @@ export function processSortArray(
     table,
     sortFieldsArray,
     previousJoins,
-    (tableName, finalFieldname, fieldObject, fieldIndex) =>
-      tableName +
+    (table, finalTableName, fieldname, fieldObject, fieldIndex) =>
+      finalTableName +
       "." +
-      finalFieldname +
+      fieldname +
       " " +
       (fieldObject.desc ? "DESC" : "ASC")
   );
@@ -443,8 +444,8 @@ export function processGroupArray(
     table,
     groupFieldsArray,
     previousJoins,
-    (tableName, finalFieldname, fieldObject, fieldIndex) =>
-      tableName + "." + finalFieldname
+    (tableName, fieldname, fieldObject, fieldIndex) =>
+      tableName + "." + fieldname
   );
 }
 
@@ -462,7 +463,7 @@ export function processJoins(
     let currentTypeDef = getTypeDefs()[table];
     let currentTable = table;
 
-    let joinTableAlias, finalFieldname;
+    let joinTableAlias, fieldname;
 
     const joinArray: {
       joinTableName?: string;
@@ -548,14 +549,14 @@ export function processJoins(
           currentTable = joinTableAlias;
         }
       } else {
-        //no more fields, set the finalFieldname
-        finalFieldname = ele.field;
+        //no more fields, set the fieldname
+        fieldname = ele.field;
       }
     });
 
-    const tableName = joinTableAlias || table;
+    const finalTableName = joinTableAlias ?? table;
     statements.push(
-      assemblyFn(tableName, finalFieldname, fieldObject, fieldIndex)
+      assemblyFn(table, finalTableName, fieldname, fieldObject, fieldIndex)
     );
   });
 
