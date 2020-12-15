@@ -468,11 +468,11 @@ export function processJoins(
   fieldsArray.forEach((fieldObject, fieldIndex) => {
     const fieldPath = fieldObject.field.split(".");
     let currentTypeDef = getTypeDefs().get(table);
-    let currentTable = table;
-    let currentType = table;
+    let tableAlias = table;
+    let tableName = table;
 
     if (!currentTypeDef)
-      throw new Error("TypeDef: " + currentTable + " does not exist");
+      throw new Error("TypeDef for table: " + tableName + " does not exist");
 
     let joinTableAlias, fieldname;
 
@@ -482,7 +482,7 @@ export function processJoins(
       foreignField: string;
     }[] = [];
 
-    //if this exists, they must be processed first before processing the fieldPath
+    // if this exists, they must be processed first before processing the fieldPath
     if (Array.isArray(fieldObject.joinFields)) {
       fieldObject.joinFields.forEach((joinFieldObject, joinFieldIndex) => {
         joinArray.push({
@@ -493,17 +493,12 @@ export function processJoins(
       });
     }
 
-    //process the "normal" fields
+    // process the "normal" fields
     fieldPath.forEach((field, joinFieldIndex) => {
-      // check for valid field in the typDef
-      if (!(field in currentTypeDef!))
-        throw new Error(
-          "Field: " + field + " does not exist in Table: " + currentTable
-        );
+      // going to assume the foreignKey is always "id"
       joinArray.push({
         field: field,
-        foreignField:
-          currentTypeDef![field].mysqlOptions?.joinInfo?.foreignKey ?? "id",
+        foreignField: "id",
       });
     });
 
@@ -516,7 +511,7 @@ export function processJoins(
         // check for valid field in the typDef
         if (!(ele.field in currentTypeDef!))
           throw new Error(
-            "Field: " + ele.field + " does not exist in Table: " + currentTable
+            "Field: " + ele.field + " does not exist in Table: " + tableName
           );
 
         //join with this type
@@ -557,7 +552,7 @@ export function processJoins(
               " " +
               joinTableAlias +
               " ON " +
-              currentTable +
+              tableAlias +
               "." +
               ele.field +
               " = " +
@@ -566,10 +561,10 @@ export function processJoins(
               ele.foreignField;
           }
 
-          //shift the typeDef
+          //shift the typeDef, tableAlias, and tableName
           currentTypeDef = getTypeDefs().get(joinTableName);
-          currentTable = joinTableAlias;
-          currentType = joinTableName;
+          tableAlias = joinTableAlias;
+          tableName = joinTableName;
         }
       } else {
         //no more fields, set the fieldname
@@ -578,7 +573,7 @@ export function processJoins(
     });
 
     statements.push(
-      assemblyFn(currentType, currentTable, fieldname, fieldObject, fieldIndex)
+      assemblyFn(tableName, tableAlias, fieldname, fieldObject, fieldIndex)
     );
   });
 
