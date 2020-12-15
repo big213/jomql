@@ -25,7 +25,8 @@ export async function addTableRow(
   adminFields = {},
   ignore = false
 ) {
-  const typeDef: TypeDef = getTypeDefs()[typename];
+  const typeDef: TypeDef | undefined = getTypeDefs().get(typename);
+  if (!typeDef) throw new Error("Invalid TypeDef: " + typename);
 
   // assemble the mysql fields
   const sqlFields = {};
@@ -123,7 +124,8 @@ export async function updateTableRow(
   whereObject: SqlWhereObject
 ) {
   //resolve the setters
-  const typeDef: TypeDef = getTypeDefs()[typename];
+  const typeDef: TypeDef | undefined = getTypeDefs().get(typename);
+  if (!typeDef) throw new Error("Invalid TypeDef: " + typename);
 
   //assemble the mysql fields
   const sqlFields = {};
@@ -187,7 +189,8 @@ export async function deleteTableRow(
   whereObject: SqlWhereObject
 ) {
   //resolve the deleters
-  const typeDef: TypeDef = getTypeDefs()[typename];
+  const typeDef: TypeDef | undefined = getTypeDefs().get(typename);
+  if (!typeDef) throw new Error("Invalid TypeDef: " + typename);
 
   //handle the custom deleters
   const customResolvers: CustomResolverMap = {};
@@ -228,14 +231,15 @@ export async function resolveTableRows(
   // shortcut: if no fields were requested, simply return typename
   if (Object.keys(externalQuery).length < 1) return [{ __typename: typename }];
 
+  const typeDef: TypeDef | undefined =
+    externalTypeDef ?? getTypeDefs().get(typename);
+  if (!typeDef) throw new Error("Invalid TypeDef: " + typename);
+
   // convert externalQuery into a resolver tree
   const {
     validatedSqlQuery,
     validatedResolverQuery,
-  } = generateJomqlResolverTree(
-    externalQuery,
-    externalTypeDef ?? getTypeDefs()[typename]
-  );
+  } = generateJomqlResolverTree(externalQuery, typeDef);
 
   const sqlQuery = {
     select: validatedSqlQuery,

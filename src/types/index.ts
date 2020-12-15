@@ -72,9 +72,7 @@ export type TypeDefSqlOptions = ModelAttributeColumnOptions & {
 
 export type Schema = {
   rootResolvers: RootResolver;
-  typeDefs: {
-    [x: string]: TypeDef;
-  };
+  typeDefs: Map<string, TypeDef>;
   enums: {
     [x: string]: { [s: number]: string };
   };

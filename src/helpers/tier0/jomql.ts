@@ -10,7 +10,7 @@ import type {
 
 export function generateJomqlResolverTree(
   externalQuery: JomqlQuery,
-  typeDef: TypeDef,
+  typeDef?: TypeDef,
   parentFields: string[] = []
 ): JomqlResolverTree {
   if (!typeDef) throw new Error("Invalid typeDef");
@@ -105,7 +105,7 @@ export function generateJomqlResolverTree(
     if (typeDef[field].mysqlOptions) {
       fieldUsed = true;
       const joinType = typeDef[field].mysqlOptions?.joinInfo?.type;
-
+      const joinTypeDef = typeDef;
       // lookup the raw value directly
       if (
         isLookupField ||
@@ -120,7 +120,7 @@ export function generateJomqlResolverTree(
         // need to join with another field
         const validatedNestedFields = generateJomqlResolverTree(
           externalQuery[field],
-          getTypeDefs()[joinType],
+          getTypeDefs().get(joinType),
           parentFields.concat(field)
         );
 

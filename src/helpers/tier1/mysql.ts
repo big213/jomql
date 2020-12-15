@@ -292,9 +292,13 @@ export function processSelectArray(
     selectFieldsArray,
     previousJoins,
     (tableName, tableAlias, fieldname, fieldObject, fieldIndex) => {
-      const currentTypeDef = getTypeDefs()[tableName];
+      const currentTypeDef = getTypeDefs().get(tableName);
+      if (!currentTypeDef) throw new Error("Invalid typeDef for: " + tableName);
+      if (!(fieldname in currentTypeDef))
+        throw new Error(
+          "Field: " + fieldname + " does not exist in table: " + tableName
+        );
 
-      // retrieve getter, if any
       const getter = currentTypeDef[fieldname].mysqlOptions?.getter;
 
       return (
@@ -349,7 +353,14 @@ export function processWhereObject(
         const operator = fieldObject.operator ?? "=";
         const placeholder = fieldname + subIndexString + "_" + subIndex;
 
-        const currentTypeDef = getTypeDefs()[tableAlias];
+        const currentTypeDef = getTypeDefs().get(tableName);
+        if (!currentTypeDef)
+          throw new Error("Invalid typeDef for: " + tableName);
+        if (!(fieldname in currentTypeDef))
+          throw new Error(
+            "Field: " + fieldname + " does not exist in table: " + tableName
+          );
+
         const getter = currentTypeDef[fieldname].mysqlOptions?.getter;
 
         let whereSubstatement = getter
@@ -456,9 +467,12 @@ export function processJoins(
 
   fieldsArray.forEach((fieldObject, fieldIndex) => {
     const fieldPath = fieldObject.field.split(".");
-    let currentTypeDef = getTypeDefs()[table];
+    let currentTypeDef = getTypeDefs().get(table);
     let currentTable = table;
     let currentType = table;
+
+    if (!currentTypeDef)
+      throw new Error("TypeDef: " + currentTable + " does not exist");
 
     let joinTableAlias, fieldname;
 
@@ -481,10 +495,15 @@ export function processJoins(
 
     //process the "normal" fields
     fieldPath.forEach((field, joinFieldIndex) => {
+      // check for valid field in the typDef
+      if (!(field in currentTypeDef!))
+        throw new Error(
+          "Field: " + field + " does not exist in Table: " + currentTable
+        );
       joinArray.push({
         field: field,
         foreignField:
-          currentTypeDef[field]?.mysqlOptions?.joinInfo?.foreignKey ?? "id",
+          currentTypeDef![field].mysqlOptions?.joinInfo?.foreignKey ?? "id",
       });
     });
 
@@ -494,10 +513,16 @@ export function processJoins(
       const cumulativeJoinFieldChain = cumulativeJoinFields.join(".");
       //if there's no next field, no more joins
       if (joinArray[eleIndex + 1]) {
+        // check for valid field in the typDef
+        if (!(ele.field in currentTypeDef!))
+          throw new Error(
+            "Field: " + ele.field + " does not exist in Table: " + currentTable
+          );
+
         //join with this type
         const joinTableName =
-          ele.joinTableName ||
-          currentTypeDef[ele.field]?.mysqlOptions?.joinInfo?.type;
+          ele.joinTableName ??
+          currentTypeDef![ele.field].mysqlOptions?.joinInfo?.type;
 
         //if it requires a join, check if it was joined previously
         if (joinTableName) {
@@ -542,7 +567,7 @@ export function processJoins(
           }
 
           //shift the typeDef
-          currentTypeDef = getTypeDefs()[joinTableName];
+          currentTypeDef = getTypeDefs().get(joinTableName);
           currentTable = joinTableAlias;
           currentType = joinTableName;
         }
