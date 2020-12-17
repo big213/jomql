@@ -68,6 +68,7 @@ export type TypeDefSqlOptions = ModelAttributeColumnOptions & {
     foreignKey?: string;
   };
   getter?: Function;
+  joinHidden?: boolean;
 };
 
 export type Schema = {

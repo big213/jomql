@@ -102,10 +102,20 @@ export function generateJomqlResolverTree(
     }
 
     // has mysqlOptions, is a mysql field
-    if (typeDef[field].mysqlOptions) {
+    const mysqlOptions = typeDef[field].mysqlOptions;
+    if (mysqlOptions) {
       fieldUsed = true;
-      const joinType = typeDef[field].mysqlOptions?.joinInfo?.type;
-      const joinTypeDef = typeDef;
+      const joinType = mysqlOptions.joinInfo?.type;
+
+      // check if field is hidden when part of a nested query
+      if (parentFields.length && mysqlOptions.joinHidden) {
+        throw new Error(
+          "Invalid Query: Requested field not allowed to be accessed directly in an nested context: '" +
+            field +
+            "'"
+        );
+      }
+
       // lookup the raw value directly
       if (
         isLookupField ||
@@ -114,7 +124,6 @@ export function generateJomqlResolverTree(
       )
         validatedSqlQuery.push({
           field: parentFields.concat(field).join("."),
-          // getter: typeDef[field].mysqlOptions?.getter,
         });
       else if (joinType && isNestedField) {
         // need to join with another field
@@ -171,20 +180,6 @@ export async function handleResolvedQueries(
         obj,
         previous
       );
-
-      /*
-      //if dataloader flag set, fetch the raw field and defer
-      if (!resolverQuery[field].dataloader) {
-        obj[field] = await resolverQuery[field].resolver(
-          req,
-          args,
-          resolverQuery[field].externalQuery,
-          typename,
-          obj,
-          previous
-        );
-      }
-      */
     } else {
       // if field does not have a resolver, it must be part of the tree. go deeper
       const nestedResolver = resolverQuery[field].nested;
