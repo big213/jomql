@@ -1,6 +1,10 @@
 import { externalFnWrapper } from "./helpers/tier1/router";
-import { generateSchema, generateGraphqlSchema } from "./helpers/tier0/schema";
-import type { Params, Schema } from "./types";
+import {
+  generateTsSchema,
+  generateSchema,
+  generateGraphqlSchema,
+} from "./helpers/tier0/schema";
+import type { Params, Schema, MysqlEnv } from "./types";
 export type {
   RootResolver,
   RootResolverObject,
@@ -120,6 +124,10 @@ export function initializeJomql(app: any, schema: Schema, params: Params) {
     res.send(generateSchema(schema));
   });
 
+  app.get("/tsschema.ts", function (req, res) {
+    res.send(generateTsSchema(schema));
+  });
+
   app.get("/graphqlschema", function (req, res) {
     res.send(generateGraphqlSchema(schema));
   });
@@ -155,32 +163,38 @@ export { DataTypes as sequelizeDataTypes, Sequelize } from "sequelize";
 
 export * as jomqlHelper from "./helpers/tier0/jomql";
 
+export { generateTsSchema };
+
 export { ErrorWrapper } from "./classes/errorWrapper";
 
-export function syncDatabase(mysqlEnv, schema) {
+export function syncDatabase(
+  mysqlEnv: MysqlEnv,
+  schema: Schema,
+  force = false
+) {
   //loop through typeDefs to identify needed mysql tables
   initializeSequelize(mysqlEnv);
   const sequelize = getSequelizeInstance();
 
-  for (const type in schema.typeDefs) {
+  schema.typeDefs.forEach((typeDef, typeKey) => {
     const definition = {};
-    let properties = 0;
-    for (const prop in schema.typeDefs[type]) {
-      if (prop !== "id" && schema.typeDefs[type][prop].mysqlOptions?.type) {
-        definition[prop] = schema.typeDefs[type][prop].mysqlOptions;
-        properties++;
+
+    for (const prop in typeDef) {
+      if (prop !== "id" && typeDef[prop].mysqlOptions) {
+        definition[prop] = typeDef[prop].mysqlOptions;
       }
     }
-    if (properties > 0) {
-      sequelize.define(type, definition, {
+
+    if (Object.keys(definition).length > 0) {
+      sequelize.define(typeKey, definition, {
         timestamps: false,
         freezeTableName: true,
       });
     }
-  }
+  });
 
   return sequelize
-    .sync({ alter: true })
+    .sync(force ? { force: true } : { alter: true })
     .then(() => {
       console.log("Done syncing DB");
       sequelize.close();
