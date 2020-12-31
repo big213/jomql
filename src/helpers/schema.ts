@@ -89,7 +89,7 @@ type Scalars = BaseScalars & AddedScalars;\n`;
 
   // add main types
   schema.typeDefs.forEach((typeDef, typeDefKey) => {
-    const tsTypeFields: tsTypeFields = new Map();
+    const mainTypeFields: tsTypeFields = new Map();
 
     Object.entries(typeDef).forEach(([field, fieldDef]) => {
       const type = fieldDef.type;
@@ -118,7 +118,7 @@ type Scalars = BaseScalars & AddedScalars;\n`;
         typename = `Edge<${typename.replace(/Edge$/, "")}>`;
       }
 
-      tsTypeFields.set(field, {
+      mainTypeFields.set(field, {
         value: typename,
         isArray: !!fieldDef.isArray,
         isNullable: fieldDef.allowNull,
@@ -126,7 +126,7 @@ type Scalars = BaseScalars & AddedScalars;\n`;
       });
     });
 
-    tsJson.set(capitalizeString(typeDefKey), tsTypeFields);
+    tsJson.set(capitalizeString(typeDefKey), mainTypeFields);
   });
 
   // add root resolvers -- must be added AFTER types
