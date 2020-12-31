@@ -1,38 +1,29 @@
-import { externalFnWrapper } from "./helpers/tier1/router";
+import { Express } from "express";
 import {
-  generateTsSchema,
-  generateSchema,
-  generateGraphqlSchema,
-} from "./helpers/tier0/schema";
-import type { Params, Schema, MysqlEnv } from "./types";
-export type {
+  createJomqlRequestHandler,
+  createRestRequestHandler,
+} from "./helpers/router";
+import { generateTsSchema } from "./helpers/schema";
+import type { Params, Schema, RootResolverObject } from "./types";
+export {
   RootResolver,
   RootResolverObject,
   Schema,
   ResolverFunction,
-  TypeDefObject,
-  TypeDef,
-  SqlJoinFieldObject,
-  SqlWhereObject,
-  SqlQuerySelectObject,
-  SqlSortFieldObject,
+  TypeDefinitionField,
+  TypeDefinition,
+  ArgDefinition,
+  ScalarDefinition,
+  JomqlResolverObject,
+  isScalarDefinition,
+  JsType,
 } from "./types";
-// utils
-import * as mysql from "./utils/mysql2";
-
-import { initializeSequelize, getSequelizeInstance } from "./utils/sequelize";
+export { JomqlFieldError } from "./classes";
 
 let exportedSchema: Schema, exportedLookupValue: any, exportedDebug: boolean;
 
-export function initializeJomql(app: any, schema: Schema, params: Params) {
-  const {
-    mysqlEnv,
-    debug,
-    allowedOrigins,
-    lookupValue = null,
-    jomqlPath = "/jomql",
-    allowSync = false,
-  } = params;
+export function initializeJomql(app: Express, params: Params) {
+  const { schema, debug, lookupValue = null, jomqlPath = "/jomql" } = params;
 
   // jomqlPath must start with '/'
   if (!jomqlPath.match(/^\//)) {
@@ -46,45 +37,26 @@ export function initializeJomql(app: any, schema: Schema, params: Params) {
 
   exportedDebug = !!debug;
 
-  mysql.initializePool(mysqlEnv, debug);
+  // aggregate all root resolvers
+  const allRootResolversMap: Map<string, RootResolverObject> = new Map();
 
-  app.use((req: any, res, next) => {
-    // aggregate all root resolvers
-    const allRootResolversMap = new Map();
-
-    for (const resolverType in schema.rootResolvers) {
-      for (const prop in schema.rootResolvers[resolverType]) {
-        allRootResolversMap.set(prop, schema.rootResolvers[resolverType][prop]);
-      }
+  Object.values(schema.rootResolvers).forEach((rootResolver) => {
+    for (const key in rootResolver) {
+      allRootResolversMap.set(key, rootResolver[key]);
     }
-
-    // handle jomql queries
-    if (req.method === "POST" && req.url === jomqlPath) {
-      const rootResolverObject = allRootResolversMap.get(req.body.action);
-
-      if (rootResolverObject) {
-        // map from action to method + url
-        req.method = rootResolverObject.method;
-        req.url = rootResolverObject.route;
-
-        //add only the app route that we are going to use
-        app[rootResolverObject.method](
-          rootResolverObject.route,
-          externalFnWrapper(rootResolverObject.resolver)
-        );
-      }
-
-      req.jomql = req.body.query || {};
-    } else {
-      //if not using jomql, must populate all the routes
-      allRootResolversMap.forEach((item) => {
-        app[item.method](item.route, externalFnWrapper(item.resolver));
-      });
-    }
-    next();
   });
 
-  app.set("json replacer", function (key, value) {
+  app.post(jomqlPath, createJomqlRequestHandler(allRootResolversMap));
+
+  // populate all RESTful routes. This should only be done on cold starts.
+  allRootResolversMap.forEach((item, key) => {
+    if (item.route === jomqlPath)
+      throw new Error(`Duplicate route for jomql path: '${jomqlPath}'`);
+
+    app[item.method](item.route, createRestRequestHandler(item, key));
+  });
+
+  app.set("json replacer", function (key: string, value: any) {
     // undefined values are set to `null`
     if (typeof value === "undefined") {
       return null;
@@ -92,59 +64,10 @@ export function initializeJomql(app: any, schema: Schema, params: Params) {
     return value;
   });
 
-  app.use(function (req, res, next) {
-    const origin =
-      Array.isArray(allowedOrigins) && allowedOrigins.length
-        ? allowedOrigins.includes(req.headers.origin)
-          ? req.headers.origin
-          : allowedOrigins[0]
-        : "*";
-
-    res.header("Access-Control-Allow-Origin", origin);
-    if (origin !== "*") {
-      res.header("Vary", "Origin");
-    }
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control"
-    );
-    res.header(
-      "Access-Control-Allow-Methods",
-      "PUT, POST, GET, DELETE, OPTIONS"
-    );
-    next();
-  });
-
-  app.options("*", function (req, res, next) {
-    res.header("Access-Control-Max-Age", "86400");
-    res.sendStatus(200);
-  });
-
-  app.get("/schema", function (req, res) {
-    res.send(generateSchema(schema));
-  });
-
   app.get("/tsschema.ts", function (req, res) {
     res.send(generateTsSchema(schema));
   });
-
-  app.get("/graphqlschema", function (req, res) {
-    res.send(generateGraphqlSchema(schema));
-  });
-
-  app.post(
-    "/mysql/sync",
-    externalFnWrapper((req, res) => {
-      // only allowed to call on dev mode
-      if (!allowSync) {
-        throw new Error("Sync disabled");
-      }
-      return syncDatabase(mysqlEnv, schema);
-    })
-  );
 }
-
-export { initializeSequelize, getSequelizeInstance } from "./utils/sequelize";
 
 export const getSchema = () => exportedSchema;
 
@@ -154,54 +77,16 @@ export const getTypeDefs = () => exportedSchema.typeDefs;
 
 export const isDebug = () => exportedDebug;
 
-export * as mysqlHelper from "./helpers/tier1/mysql";
+export * as BaseScalars from "./scalars";
 
-export * as resolverHelper from "./resolvers/resolver";
-export { dataTypes } from "./helpers/tier0/dataType";
-
-export { DataTypes as sequelizeDataTypes, Sequelize } from "sequelize";
-
-export * as jomqlHelper from "./helpers/tier0/jomql";
+export {
+  generateJomqlResolverTree,
+  processJomqlResolverTree,
+  handleAggregatedQueries,
+  validateExternalArgs,
+  validateResultFields,
+} from "./helpers/jomql";
 
 export { generateTsSchema };
 
 export { ErrorWrapper } from "./classes/errorWrapper";
-
-export function syncDatabase(
-  mysqlEnv: MysqlEnv,
-  schema: Schema,
-  force = false
-) {
-  //loop through typeDefs to identify needed mysql tables
-  initializeSequelize(mysqlEnv);
-  const sequelize = getSequelizeInstance();
-
-  schema.typeDefs.forEach((typeDef, typeKey) => {
-    const definition = {};
-
-    for (const prop in typeDef) {
-      if (prop !== "id" && typeDef[prop].mysqlOptions) {
-        definition[prop] = typeDef[prop].mysqlOptions;
-      }
-    }
-
-    if (Object.keys(definition).length > 0) {
-      sequelize.define(typeKey, definition, {
-        timestamps: false,
-        freezeTableName: true,
-      });
-    }
-  });
-
-  return sequelize
-    .sync(force ? { force: true } : { alter: true })
-    .then(() => {
-      console.log("Done syncing DB");
-      sequelize.close();
-    })
-    .catch((err) => {
-      console.log("An error occurred with syncing.");
-      console.log(err);
-      sequelize.close();
-    });
-}

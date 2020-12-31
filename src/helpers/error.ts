@@ -1,4 +1,4 @@
-import { ErrorWrapper } from '../../classes/errorWrapper';
+import { ErrorWrapper } from "../classes/errorWrapper";
 
 export default {
   generateError(message: string, statusCode = 400, errorCode = "misc/other") {
@@ -6,7 +6,12 @@ export default {
   },
 
   wrapError(error: Error) {
-    return new ErrorWrapper(error.message, 500, "system-generated-error", error);
+    return new ErrorWrapper(
+      error.message,
+      500,
+      "system-generated-error",
+      error
+    );
   },
 
   invalidSqlError() {

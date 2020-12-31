@@ -2,16 +2,14 @@
   "compilerOptions": {
     "module": "commonjs",
     "noImplicitReturns": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "outDir": "lib",
     "sourceMap": true,
     "strict": true,
     "target": "es2017",
     "resolveJsonModule": true,
-    "declaration": true,
+    "declaration": true
   },
   "compileOnSave": true,
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }
