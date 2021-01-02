@@ -4,6 +4,12 @@ export function isScalarDefinition(
   return typeof ele !== "string";
 }
 
+export function isInputTypeDefinition(
+  ele: InputTypeDefinition | ScalarDefinition | string
+): ele is InputTypeDefinition {
+  return typeof ele !== "string" && !("types" in ele);
+}
+
 export type ValidMethod =
   | "all"
   | "get"
@@ -32,18 +38,24 @@ export type Params = {
 };
 
 export type ArgDefinition = {
-  type: ScalarDefinition;
+  type: ScalarDefinition | InputTypeDefinition | string;
   required?: boolean;
   isArray?: boolean;
+  argsValidator?: (args: any, fieldPath: string[]) => void;
+};
+
+export type InputTypeDefinition = {
+  name?: string;
+  fields: {
+    [x: string]: ArgDefinition;
+  };
 };
 
 export type ResolverObject = {
   type: string | ScalarDefinition;
   isArray?: boolean;
   allowNull: boolean;
-  args?: {
-    [x: string]: ArgDefinition;
-  };
+  args?: ArgDefinition;
   argsValidator?: (args: any, fieldPath: string[]) => void;
   resolver?: ResolverFunction;
 };

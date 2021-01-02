@@ -50,7 +50,7 @@ export function createJomqlRequestHandler(
         if (query) {
           const { __args: jomqlArgs, ...jomqlQuery } = query;
           // validate args
-          validateExternalArgs(jomqlArgs, rootResolverObject, [operation]);
+          validateExternalArgs(jomqlArgs, rootResolverObject.args, [operation]);
 
           results = await rootResolverObject.resolver(
             req,

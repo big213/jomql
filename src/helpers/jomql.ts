@@ -8,79 +8,66 @@ import {
   JomqlOutput,
   isScalarDefinition,
   ResolverObject,
+  InputTypeDefinition,
+  isInputTypeDefinition,
+  ArgDefinition,
 } from "../types";
 
-export function isObject(ele: unknown) {
+export function isObject(ele: unknown): ele is object {
   return Object.prototype.toString.call(ele) === "[object Object]";
 }
 
 // validates and replaces the args in place
 export function validateExternalArgs(
   args: JomqlQueryArgs | undefined,
-  resolverObject: ResolverObject,
+  argDefinition: ArgDefinition | undefined,
   fieldPath: string[]
 ) {
   const fieldString = ["root"].concat(...fieldPath).join(".");
-  // if args is provided and it is not an object, throw error
-  if (args && !isObject(args))
-    throw new Error(`Args for field: '${fieldString}' is malformed`);
 
-  const validArgs = resolverObject.args;
-  if (!validArgs && args && Object.keys(args).length > 0) {
-    throw new Error(`Not expecting any args for field: '${fieldString}'`);
+  // if no argDefinition and args provided, throw error
+  if (!argDefinition) {
+    if (args)
+      throw new Error(`Not expecting any args for field: '${fieldString}'`);
+    else return;
   }
 
-  if (validArgs) {
-    // required arg not provided
-    for (const arg in validArgs) {
-      if ((!args || !(arg in args)) && validArgs[arg].required) {
-        throw new Error(
-          `Required arg '${arg}' not provided on field: '${fieldString}'`
-        );
-      }
+  // if argDefinition.required and args is undefined, throw err
+  if (argDefinition.required && args === undefined)
+    throw new Error(`Args is required for field: '${fieldString}'`);
 
-      if (args) {
-        if (
-          validArgs[arg].required &&
-          validArgs[arg].isArray &&
-          !Array.isArray(args[arg])
-        ) {
-          throw new Error(
-            `Expecting array for: '${arg}' on field: '${fieldString}'`
-          );
-        }
+  // if argDefinition.isArray and args is not array, throw err
+  if (argDefinition.isArray && !Array.isArray(args))
+    throw new Error(`Expecting array for field: '${fieldString}'`);
 
-        if (!validArgs[arg].isArray && Array.isArray(args[arg])) {
-          throw new Error(
-            `Not expecting array for: '${arg}' on field: '${fieldString}'`
-          );
-        }
+  // if argDefinition.type is inputTypeDefinition
+  if (isInputTypeDefinition(argDefinition.type)) {
+    if (!isObject(args))
+      throw new Error(`Expecting object args for field: '${fieldString}'`);
+
+    Object.entries(argDefinition.type.fields).forEach(([key, argDef]) => {
+      // validate each key of arg
+      validateExternalArgs(args![key], argDef, fieldPath.concat(key));
+    });
+  } else if (isScalarDefinition(argDefinition.type)) {
+    // if argDefinition.type is scalarDefinition, attempt to parseValue args
+    // replace value if parseValue
+    const parseValue = argDefinition.type.parseValue;
+    if (parseValue) {
+      // if arg is an array, loop through
+      if (Array.isArray(args)) {
+        args = args.map((ele: unknown) => parseValue(ele, fieldPath));
+      } else {
+        args = parseValue(args, fieldPath);
       }
     }
-    for (const arg in args) {
-      if (!(arg in validArgs)) {
-        // unknown arg provided
-        throw new Error(
-          `Unknown arg '${arg}' provided for field: '${fieldString}'`
-        );
-      }
-
-      // replace value if parseValue
-      const parseValue = validArgs[arg].type.parseValue;
-      if (parseValue) {
-        // if arg is an array, loop through
-        if (Array.isArray(args[arg])) {
-          args[arg] = args[arg].map((ele: any) => parseValue(ele, fieldPath));
-        } else {
-          args[arg] = parseValue(args[arg], fieldPath);
-        }
-      }
-    }
+  } else {
+    // must be string field, do nothing.
   }
 
   // if an argsValidator function is available, also run that
-  if (resolverObject.argsValidator) {
-    resolverObject.argsValidator(args, fieldPath);
+  if (argDefinition.argsValidator) {
+    argDefinition.argsValidator(args, fieldPath);
   }
 }
 
@@ -152,7 +139,11 @@ export function generateJomqlResolverTree(
   for (const field in externalQuery) {
     // validate __args, then skip
     if (field === "__args") {
-      validateExternalArgs(externalQuery.__args, typeDef[field], parentFields);
+      validateExternalArgs(
+        externalQuery.__args,
+        typeDef[field].args,
+        parentFields
+      );
       continue;
     }
 
@@ -209,7 +200,7 @@ export function generateJomqlResolverTree(
       // validate the query.__args at this point
       validateExternalArgs(
         externalQuery[field].__args,
-        typeDef[field],
+        typeDef[field].args,
         [field].concat(parentFields)
       );
 

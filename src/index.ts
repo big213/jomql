@@ -3,7 +3,6 @@ import {
   createJomqlRequestHandler,
   createRestRequestHandler,
 } from "./helpers/router";
-import { generateTsSchema } from "./helpers/schema";
 import type { Params, Schema, RootResolverObject } from "./types";
 export {
   RootResolver,
@@ -13,9 +12,11 @@ export {
   TypeDefinitionField,
   TypeDefinition,
   ArgDefinition,
+  InputTypeDefinition,
   ScalarDefinition,
   JomqlResolverObject,
   isScalarDefinition,
+  isInputTypeDefinition,
   JsType,
 } from "./types";
 export { JomqlFieldError } from "./classes";
@@ -63,10 +64,6 @@ export function initializeJomql(app: Express, params: Params) {
     }
     return value;
   });
-
-  app.get("/tsschema.ts", function (req, res) {
-    res.send(generateTsSchema(schema));
-  });
 }
 
 export const getSchema = () => exportedSchema;
@@ -86,7 +83,5 @@ export {
   validateExternalArgs,
   validateResultFields,
 } from "./helpers/jomql";
-
-export { generateTsSchema };
 
 export { ErrorWrapper } from "./classes/errorWrapper";
