@@ -13,7 +13,9 @@ import {
   ArgDefinition,
 } from "../types";
 
-export function isObject(ele: unknown): ele is object {
+type stringKeyObject = { [x: string]: any };
+
+export function isObject(ele: unknown): ele is stringKeyObject {
   return Object.prototype.toString.call(ele) === "[object Object]";
 }
 
@@ -23,6 +25,8 @@ export function validateExternalArgs(
   argDefinition: ArgDefinition | undefined,
   fieldPath: string[]
 ) {
+  let parsedArgs;
+
   const fieldString = ["root"].concat(...fieldPath).join(".");
 
   // if no argDefinition and args provided, throw error
@@ -31,6 +35,9 @@ export function validateExternalArgs(
       throw new Error(`Not expecting any args for field: '${fieldString}'`);
     else return;
   }
+
+  // if no arg required and args is undefined, return
+  if (!argDefinition.required && args === undefined) return;
 
   // if argDefinition.required and args is undefined, throw err
   if (argDefinition.required && args === undefined)
@@ -42,12 +49,41 @@ export function validateExternalArgs(
 
   // if argDefinition.type is inputTypeDefinition
   if (isInputTypeDefinition(argDefinition.type)) {
-    if (!isObject(args))
-      throw new Error(`Expecting object args for field: '${fieldString}'`);
+    let argsArray: (JomqlQueryArgs | undefined)[];
+    const fields = argDefinition.type.fields;
+    if (Array.isArray(args)) {
+      argsArray = args;
+    } else {
+      argsArray = [args];
+    }
 
-    Object.entries(argDefinition.type.fields).forEach(([key, argDef]) => {
-      // validate each key of arg
-      validateExternalArgs(args![key], argDef, fieldPath.concat(key));
+    // process all args
+    argsArray.forEach((arg) => {
+      if (!isObject(arg))
+        throw new Error(`Expecting object args for field: '${fieldString}'`);
+
+      const keysToValidate = new Set(Object.keys(arg));
+      Object.entries(fields).forEach(([key, argDef]) => {
+        // validate each key of arg
+        const validatedArg = validateExternalArgs(
+          arg[key],
+          argDef,
+          fieldPath.concat(key)
+        );
+        // if key is undefined, make sure it is deleted
+        if (validatedArg === undefined) delete arg[key];
+        else arg[key] = validatedArg;
+        keysToValidate.delete(key);
+      });
+
+      // check if any remaining keys to validate (aka unknown args)
+      if (keysToValidate.size > 0) {
+        throw new Error(
+          `Unknown args '${[...keysToValidate].join(
+            ","
+          )}' for field: '${fieldString}'`
+        );
+      }
     });
   } else if (isScalarDefinition(argDefinition.type)) {
     // if argDefinition.type is scalarDefinition, attempt to parseValue args
@@ -56,19 +92,22 @@ export function validateExternalArgs(
     if (parseValue) {
       // if arg is an array, loop through
       if (Array.isArray(args)) {
-        args = args.map((ele: unknown) => parseValue(ele, fieldPath));
+        parsedArgs = args.map((ele: unknown) => parseValue(ele, fieldPath));
       } else {
-        args = parseValue(args, fieldPath);
+        parsedArgs = parseValue(args, fieldPath);
       }
     }
   } else {
     // must be string field, do nothing.
   }
 
+  parsedArgs = parsedArgs ?? args;
+
   // if an argsValidator function is available, also run that
   if (argDefinition.argsValidator) {
-    argDefinition.argsValidator(args, fieldPath);
+    argDefinition.argsValidator(parsedArgs, fieldPath);
   }
+  return parsedArgs;
 }
 
 // throws an error if a field is not an array when it should be
