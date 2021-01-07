@@ -72,6 +72,8 @@ export const getLookupValue = () => exportedLookupValue;
 
 export const getTypeDefs = () => exportedSchema.typeDefs;
 
+export const getInputDefs = () => exportedSchema.inputDefs;
+
 export const isDebug = () => exportedDebug;
 
 export * as BaseScalars from "./scalars";

@@ -1,3 +1,5 @@
+import { string } from "../scalars";
+
 export function isScalarDefinition(
   ele: string | ScalarDefinition
 ): ele is ScalarDefinition {
@@ -41,22 +43,21 @@ export type ArgDefinition = {
   type: ScalarDefinition | InputTypeDefinition | string;
   required?: boolean;
   isArray?: boolean;
-  argsValidator?: (args: any, fieldPath: string[]) => void;
 };
 
 export type InputTypeDefinition = {
-  name?: string;
+  name?: string; // not really necessary? as we will be mapping them
   fields: {
     [x: string]: ArgDefinition;
   };
+  inputsValidator?: (args: any, fieldPath: string[]) => void;
 };
 
 export type ResolverObject = {
   type: string | ScalarDefinition;
   isArray?: boolean;
   allowNull: boolean;
-  args?: ArgDefinition;
-  argsValidator?: (args: any, fieldPath: string[]) => void;
+  args?: InputTypeDefinition;
   resolver?: ResolverFunction;
 };
 
@@ -78,6 +79,7 @@ export type TypeDefinitionField = ResolverObject & {
   customOptions?: {
     [x: string]: any;
   };
+  required?: boolean;
   hidden?: boolean;
   dataloader?: any;
   deleter?: Function;
@@ -94,6 +96,7 @@ export type JsType = "string" | "number" | "boolean" | "unknown";
 export type Schema = {
   rootResolvers: RootResolver;
   typeDefs: Map<string, TypeDefinition>;
+  inputDefs: Map<string, InputTypeDefinition>;
   scalars: {
     [x: string]: ScalarDefinition;
   };
