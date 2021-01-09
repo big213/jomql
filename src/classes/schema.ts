@@ -2,10 +2,8 @@ import {
   Schema,
   isScalarDefinition,
   RootResolverObject,
-  BaseScalars,
   TypeDefinition,
   isInputTypeDefinition,
-  InputTypeDefinition,
   ArgDefinition,
 } from "..";
 
@@ -72,19 +70,7 @@ type Argize<T, Args> = Args extends undefined
   }
 
   buildSchema() {
-    // base scalars
-    Object.entries(BaseScalars).forEach(([field, fieldDef]) => {
-      if (isScalarDefinition(fieldDef)) {
-        this.scalarTsTypeFields.set(fieldDef.name, {
-          value: fieldDef.types.join("|"),
-          isArray: false,
-          isNullable: false,
-          isOptional: false,
-        });
-      }
-    });
-
-    // addedScalars
+    // all scalars
     Object.entries(this.schema.scalars).forEach(([field, fieldDef]) => {
       if (isScalarDefinition(fieldDef)) {
         this.scalarTsTypeFields.set(fieldDef.name, {

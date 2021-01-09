@@ -1,5 +1,3 @@
-import { string } from "../scalars";
-
 export function isScalarDefinition(
   ele: string | ScalarDefinition
 ): ele is ScalarDefinition {

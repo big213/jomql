@@ -1,5 +1,4 @@
 import { Request } from "express";
-import e = require("express");
 import { getLookupValue, getTypeDefs, getInputDefs } from "..";
 import {
   TypeDefinition,
@@ -9,7 +8,6 @@ import {
   JomqlOutput,
   isScalarDefinition,
   ResolverObject,
-  InputTypeDefinition,
   isInputTypeDefinition,
   ArgDefinition,
 } from "../types";
