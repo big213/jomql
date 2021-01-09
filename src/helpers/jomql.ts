@@ -23,6 +23,162 @@ export function isObject(ele: unknown): ele is stringKeyObject {
 // validates and replaces the args in place
 export function validateExternalArgs(
   args: JomqlQueryArgs | undefined,
+  argDefinition: ArgDefinition | undefined,
+  fieldPath: string[]
+) {
+  let parsedArgs;
+
+  const fieldString = ["root"].concat(...fieldPath).join(".");
+
+  // if no argDefinition and args provided, throw error
+  if (!argDefinition) {
+    if (args)
+      throw new Error(`Not expecting any args for field: '${fieldString}'`);
+    else return;
+  }
+
+  // if no arg required and args is undefined, return
+  if (!argDefinition.required && args === undefined) return;
+
+  // if argDefinition.required and args is undefined, throw err
+  if (argDefinition.required && args === undefined)
+    throw new Error(`Args is required for field: '${fieldString}'`);
+
+  // if argDefinition.isArray and args is not array, throw err
+  if (argDefinition.isArray && !Array.isArray(args))
+    throw new Error(`Expecting array for field: '${fieldString}'`);
+
+  let argDefType = argDefinition.type;
+
+  // if string, fetch the inputDef from the map
+  if (typeof argDefType === "string") {
+    const inputDef = getInputDefs().get(argDefType);
+    if (!inputDef)
+      throw new Error(
+        `Unknown inputDef '${argDefType}' for field '${fieldString}'`
+      );
+    argDefType = inputDef;
+  }
+
+  // if argDefinition.type is inputTypeDefinition
+  if (isInputTypeDefinition(argDefType)) {
+    let argsArray: (JomqlQueryArgs | undefined)[];
+    const fields = argDefType.fields;
+    if (Array.isArray(args)) {
+      argsArray = args;
+    } else {
+      argsArray = [args];
+    }
+
+    // process all args
+    for (const arg of argsArray) {
+      if (!isObject(arg))
+        throw new Error(`Expecting object args for field: '${fieldString}'`);
+
+      const keysToValidate = new Set(Object.keys(arg));
+      Object.entries(fields).forEach(([key, argDef]) => {
+        // validate each key of arg
+        const validatedArg = validateExternalArgs(
+          arg[key],
+          argDef,
+          fieldPath.concat(key)
+        );
+        // if key is undefined, make sure it is deleted
+        if (validatedArg === undefined) delete arg[key];
+        else arg[key] = validatedArg;
+        keysToValidate.delete(key);
+      });
+
+      // check if any remaining keys to validate (aka unknown args)
+      if (keysToValidate.size > 0) {
+        throw new Error(
+          `Unknown args '${[...keysToValidate].join(
+            ","
+          )}' for field: '${fieldString}'`
+        );
+      }
+
+      // perform validation on results
+      if (argDefType.inputsValidator) {
+        argDefType.inputsValidator(arg, fieldPath);
+      }
+    }
+  } else if (isScalarDefinition(argDefType)) {
+    // if argDefinition.type is scalarDefinition, attempt to parseValue args
+    // replace value if parseValue
+    const parseValue = argDefType.parseValue;
+    if (parseValue) {
+      // if arg is an array, loop through
+      if (Array.isArray(args)) {
+        parsedArgs = args.map((ele: unknown) => parseValue(ele, fieldPath));
+      } else {
+        parsedArgs = parseValue(args, fieldPath);
+      }
+    }
+  } else {
+    // must be string field, should never reach this case
+  }
+
+  /*
+  // if an argsValidator function is available, also run that
+  if (argDefinition.argsValidator) {
+    argDefinition.argsValidator(parsedArgs, fieldPath);
+  }
+  */
+  return parsedArgs ?? args;
+}
+
+// validates and replaces the args in place
+export function validateExternalArgs3(
+  args: JomqlQueryArgs | undefined,
+  argDefinition: ArgDefinition | undefined,
+  fieldPath: string[]
+): void {
+  const fieldString = ["root"].concat(...fieldPath).join(".");
+  let parsedValue;
+
+  // if no argDefinition and args provided, throw error
+  if (!argDefinition) {
+    if (args)
+      throw new Error(`Not expecting any args for field: '${fieldString}'`);
+    else return;
+  }
+
+  // if no arg required and args is undefined, return/skip
+  if (!argDefinition.required && args === undefined) return;
+
+  // if argDefinition.required and args is undefined, throw err
+  if (argDefinition.required && args === undefined)
+    throw new Error(`Args is required for field: '${fieldString}'`);
+
+  // if argDefinition.isArray and args is not array, throw err
+  if (argDefinition.isArray && !Array.isArray(argDefinition))
+    throw new Error(`Expecting array for field: '${fieldString}'`);
+
+  const argDefType = argDefinition.type;
+
+  if (isInputTypeDefinition(argDefType)) {
+  } else if (isScalarDefinition(argDefType)) {
+    // if argDefinition.type is scalarDefinition, attempt to parseValue args
+    // replace value if parseValue
+    const parseValue = argDefType.parseValue;
+    if (parseValue) {
+      // if arg is an array, loop through
+      if (Array.isArray(args) && argDefinition.isArray) {
+        parsedValue = args.map((ele: unknown) => parseValue(ele, fieldPath));
+      } else {
+        parsedValue = parseValue(args, fieldPath);
+      }
+    }
+  } else {
+    // should be string
+  }
+
+  return parsedValue ?? args;
+}
+
+export function validateExternalArgs2(
+  args: JomqlQueryArgs | undefined,
   inputTypeDefinition: InputTypeDefinition | undefined,
   fieldPath: string[]
 ): void {
@@ -76,7 +232,7 @@ export function validateExternalArgs(
         argsArray = [args[key]];
       }
       for (const arg of argsArray) {
-        validateExternalArgs(arg, type, fieldPath.concat(key));
+        validateExternalArgs2(arg, type, fieldPath.concat(key));
       }
     } else if (isScalarDefinition(type)) {
       // if argDefinition.type is scalarDefinition, attempt to parseValue args

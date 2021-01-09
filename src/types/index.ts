@@ -46,7 +46,7 @@ export type ArgDefinition = {
 };
 
 export type InputTypeDefinition = {
-  name?: string; // not really necessary? as we will be mapping them
+  name?: string;
   fields: {
     [x: string]: ArgDefinition;
   };
@@ -57,7 +57,7 @@ export type ResolverObject = {
   type: string | ScalarDefinition;
   isArray?: boolean;
   allowNull: boolean;
-  args?: InputTypeDefinition;
+  args?: ArgDefinition;
   resolver?: ResolverFunction;
 };
 

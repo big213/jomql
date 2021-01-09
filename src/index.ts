@@ -20,6 +20,7 @@ export {
   JsType,
 } from "./types";
 export { JomqlFieldError } from "./classes";
+export { TsSchemaGenerator } from "./classes/schema";
 
 let exportedSchema: Schema, exportedLookupValue: any, exportedDebug: boolean;
 
