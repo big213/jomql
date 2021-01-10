@@ -28,10 +28,9 @@
     "url": "https://github.com/big213/jomql/issues"
   },
   "homepage": "https://github.com/big213/jomql#readme",
-  "dependencies": {
-    "express": "^4.17.1"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "express": "^4.17.1",
     "@types/express": "^4.17.9",
     "@types/node": "^14.14.16",
     "tslint": "^6.1.3",

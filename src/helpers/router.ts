@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import type { Request, Response } from "express";
 import { generateNormalResponse, generateErrorResponse } from "./response";
 import { ErrorWrapper } from "../classes/errorWrapper";
 import { isDebug } from "..";
