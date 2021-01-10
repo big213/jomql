@@ -1,3 +1,5 @@
+import { string } from "../scalars";
+
 export function isScalarDefinition(
   ele: string | ScalarDefinition
 ): ele is ScalarDefinition {
@@ -67,11 +69,7 @@ export type RootResolverObject = ResolverObject & {
 
 export type RootResolverType = "query" | "mutation" | "subscription";
 
-export type RootResolver = {
-  [y in RootResolverType]: {
-    [x: string]: RootResolverObject;
-  };
-};
+export type RootResolverMap = Map<string, RootResolverObject>;
 
 export type TypeDefinitionField = ResolverObject & {
   customOptions?: {
@@ -92,7 +90,7 @@ export type TypeDefinition = {
 export type JsType = "string" | "number" | "boolean" | "unknown";
 
 export type Schema = {
-  rootResolvers: RootResolver;
+  rootResolvers: RootResolverMap;
   typeDefs: Map<string, TypeDefinition>;
   inputDefs: Map<string, InputTypeDefinition>;
   scalars: {

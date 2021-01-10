@@ -5,7 +5,7 @@ import {
 } from "./helpers/router";
 import type { Params, Schema, RootResolverObject } from "./types";
 export {
-  RootResolver,
+  RootResolverMap,
   RootResolverObject,
   Schema,
   ResolverFunction,
@@ -39,19 +39,10 @@ export function initializeJomql(app: Express, params: Params) {
 
   exportedDebug = !!debug;
 
-  // aggregate all root resolvers
-  const allRootResolversMap: Map<string, RootResolverObject> = new Map();
-
-  Object.values(schema.rootResolvers).forEach((rootResolver) => {
-    for (const key in rootResolver) {
-      allRootResolversMap.set(key, rootResolver[key]);
-    }
-  });
-
-  app.post(jomqlPath, createJomqlRequestHandler(allRootResolversMap));
+  app.post(jomqlPath, createJomqlRequestHandler(schema.rootResolvers));
 
   // populate all RESTful routes. This should only be done on cold starts.
-  allRootResolversMap.forEach((item, key) => {
+  schema.rootResolvers.forEach((item, key) => {
     if (item.route === jomqlPath)
       throw new Error(`Duplicate route for jomql path: '${jomqlPath}'`);
 

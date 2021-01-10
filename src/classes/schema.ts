@@ -104,16 +104,7 @@ type Argize<T, Args> = Args extends undefined
 
     this.typeDocumentRoot.set("Root", rootTypeFields);
 
-    // aggregate all root resolvers
-    const allRootResolversMap: Map<string, RootResolverObject> = new Map();
-
-    Object.values(this.schema.rootResolvers).forEach((rootResolver) => {
-      for (const key in rootResolver) {
-        allRootResolversMap.set(key, rootResolver[key]);
-      }
-    });
-
-    allRootResolversMap.forEach((rootResolver, key) => {
+    this.schema.rootResolvers.forEach((rootResolver, key) => {
       const rootObject: tsTypeFields = new Map();
       const type = rootResolver.type;
       let typename;
