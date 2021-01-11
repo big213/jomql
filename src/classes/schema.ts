@@ -318,20 +318,21 @@ type Argize<T, Args> = Args extends undefined
     // build final TS document
     let typesStr: string = "";
 
-    this.typeDocumentRoot.forEach((tsRootType, typename) => {
+    this.typeDocumentRoot.forEach((tsRootTypeValue, typename) => {
       // has description? if so, add jsdoc
-      if (tsRootType.description) typesStr += `/**${tsRootType.description}*/`;
+      if (tsRootTypeValue.description)
+        typesStr += `/**${tsRootTypeValue.description}*/`;
       typesStr +=
         `export type ${typename}=` +
-        (isNestedValue(tsRootType.value)
-          ? this.buildTsDocument(tsRootType.value)
+        (isNestedValue(tsRootTypeValue.value)
+          ? this.buildTsDocument(tsRootTypeValue.value)
           : `(${
-              (tsRootType.value.value === ""
+              (tsRootTypeValue.value.value === ""
                 ? "undefined"
-                : tsRootType.value.value) +
-              (tsRootType.value.isNullable ? "|null" : "") +
+                : tsRootTypeValue.value.value) +
+              (tsRootTypeValue.value.isNullable ? "|null" : "") +
               ")" +
-              (tsRootType.value.isArray ? "[]" : "")
+              (tsRootTypeValue.value.isArray ? "[]" : "")
             }`) +
         `\n`;
     });
