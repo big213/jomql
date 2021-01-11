@@ -12,6 +12,7 @@ function validate(value: unknown, fieldPath: string[]) {
 export const boolean: ScalarDefinition = {
   name: "boolean",
   types: ["boolean"],
+  description: "True or False",
   // since mysql could store booleans as tinyint, will allow casting as boolean based on truthyness
   serialize: (value: unknown, fieldPath: string[]) => {
     if (value === null) return value;

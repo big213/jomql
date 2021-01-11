@@ -8,7 +8,7 @@ import {
 } from "..";
 
 function isNestedValue(
-  ele: tsTypeFieldFinalValue | tsTypeFields | string
+  ele: tsTypeFieldFinalValue | tsTypeFields
 ): ele is tsTypeFields {
   return ele instanceof Map;
 }
@@ -20,6 +20,12 @@ type tsTypeFieldFinalValue = {
   isArray: boolean;
   isNullable: boolean;
   isOptional: boolean;
+  description?: string;
+};
+
+type tsRootType = {
+  value: tsTypeFields | tsTypeFieldFinalValue;
+  description?: string;
 };
 
 export class TsSchemaGenerator {
@@ -60,7 +66,7 @@ type Queryize<T> = T extends never
 type Argize<T, Args> = Args extends undefined
   ? Omit<T, args>
   : Omit<T, args> & { __args: Args };\n\n`;
-  typeDocumentRoot: Map<string, tsTypeFields | string> = new Map();
+  typeDocumentRoot: Map<string, tsRootType> = new Map();
   scalarTsTypeFields: tsTypeFields = new Map();
   inputTypeTsTypeFields: tsTypeFields = new Map();
   deferredTypeFields: Set<string> = new Set();
@@ -78,20 +84,30 @@ type Argize<T, Args> = Args extends undefined
           isArray: false,
           isNullable: false,
           isOptional: false,
+          description: fieldDef.description,
         });
       }
     });
 
-    this.typeDocumentRoot.set("Scalars", this.scalarTsTypeFields);
+    this.typeDocumentRoot.set("Scalars", {
+      value: this.scalarTsTypeFields,
+      description: "All scalar values",
+    });
 
-    this.typeDocumentRoot.set("InputType", this.inputTypeTsTypeFields);
+    this.typeDocumentRoot.set("InputType", {
+      value: this.inputTypeTsTypeFields,
+      description: "All input types",
+    });
 
     // add main types
     this.schema.typeDefs.forEach((typeDef, typeDefKey) => {
       const capitalizedTypeDefKey = capitalizeString(typeDefKey);
       const mainTypeFields = this.processTypeDefinition(typeDef);
 
-      this.typeDocumentRoot.set(capitalizedTypeDefKey, mainTypeFields);
+      this.typeDocumentRoot.set(capitalizedTypeDefKey, {
+        value: mainTypeFields,
+        description: typeDef.description,
+      });
 
       // check if this type was on any deferred lists. if so, remove.
       if (this.deferredTypeFields.has(capitalizedTypeDefKey)) {
@@ -102,7 +118,10 @@ type Argize<T, Args> = Args extends undefined
     // add root resolvers -- must be added AFTER types
     const rootTypeFields: tsTypeFields = new Map();
 
-    this.typeDocumentRoot.set("Root", rootTypeFields);
+    this.typeDocumentRoot.set("Root", {
+      value: rootTypeFields,
+      description: "Root type",
+    });
 
     this.schema.rootResolvers.forEach((rootResolver, key) => {
       const rootObject: tsTypeFields = new Map();
@@ -118,6 +137,7 @@ type Argize<T, Args> = Args extends undefined
             isArray: !!rootResolver.isArray,
             isNullable: rootResolver.allowNull,
             isOptional: false,
+            description: rootResolver.description,
           });
         }
 
@@ -176,7 +196,7 @@ type Argize<T, Args> = Args extends undefined
 
   processTypeDefinition(typeDef: TypeDefinition) {
     const mainTypeFields: tsTypeFields = new Map();
-    Object.entries(typeDef).forEach(([field, fieldDef]) => {
+    Object.entries(typeDef.fields).forEach(([field, fieldDef]) => {
       const type = fieldDef.type;
       let typename;
 
@@ -193,6 +213,7 @@ type Argize<T, Args> = Args extends undefined
             isArray: !!fieldDef.isArray,
             isNullable: false,
             isOptional: false,
+            description: type.description,
           });
         }
 
@@ -211,6 +232,7 @@ type Argize<T, Args> = Args extends undefined
         isArray: !!fieldDef.isArray,
         isNullable: fieldDef.allowNull,
         isOptional: false,
+        description: fieldDef.description,
       });
     });
 
@@ -252,6 +274,7 @@ type Argize<T, Args> = Args extends undefined
             isArray: false,
             isNullable: false,
             isOptional: false,
+            description: argDefType.description,
           });
         }
 
@@ -269,12 +292,13 @@ type Argize<T, Args> = Args extends undefined
           this.schema.typeDefs.has(lowercaseString(keyParts[1]))
         ) {
           const tsTypeField = this.typeDocumentRoot.get(keyParts[1]);
-          if (tsTypeField && isNestedValue(tsTypeField)) {
-            tsTypeField.set("__args", {
+          if (tsTypeField && isNestedValue(tsTypeField.value)) {
+            tsTypeField.value.set("__args", {
               value: `Root["${rootResolverName}"]["Args"]`,
               isArray: false,
               isNullable: false,
               isOptional: false,
+              description: `Args for ${keyParts[1]}`,
             });
           }
         }
@@ -286,6 +310,7 @@ type Argize<T, Args> = Args extends undefined
       isArray: argDefinition?.isArray ?? false,
       isNullable: false,
       isOptional: !argDefinition?.required ?? false,
+      description: undefined,
     };
   }
 
@@ -293,12 +318,21 @@ type Argize<T, Args> = Args extends undefined
     // build final TS document
     let typesStr: string = "";
 
-    this.typeDocumentRoot.forEach((tsTypeField, typename) => {
+    this.typeDocumentRoot.forEach((tsRootType, typename) => {
+      // has description? if so, add jsdoc
+      if (tsRootType.description) typesStr += `/**${tsRootType.description}*/`;
       typesStr +=
         `export type ${typename}=` +
-        (isNestedValue(tsTypeField)
-          ? this.buildTsDocument(tsTypeField)
-          : tsTypeField) +
+        (isNestedValue(tsRootType.value)
+          ? this.buildTsDocument(tsRootType.value)
+          : `(${
+              (tsRootType.value.value === ""
+                ? "undefined"
+                : tsRootType.value.value) +
+              (tsRootType.value.isNullable ? "|null" : "") +
+              ")" +
+              (tsRootType.value.isArray ? "[]" : "")
+            }`) +
         `\n`;
     });
 
@@ -314,6 +348,8 @@ type Argize<T, Args> = Args extends undefined
         str += `${key}:${this.buildTsDocument(value)};`;
       } else {
         // string value
+        // has description? if so, add jsdoc
+        if (value.description) str += `/**${value.description}*/`;
         str += `${key + (value.isOptional ? "?" : "")}:(${
           (value.value === "" ? "undefined" : value.value) +
           (value.isNullable ? "|null" : "") +

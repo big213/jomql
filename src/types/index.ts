@@ -1,5 +1,3 @@
-import { string } from "../scalars";
-
 export function isScalarDefinition(
   ele: string | ScalarDefinition
 ): ele is ScalarDefinition {
@@ -59,6 +57,7 @@ export type ResolverObject = {
   allowNull: boolean;
   args?: ArgDefinition;
   resolver?: ResolverFunction;
+  description?: string;
 };
 
 export type RootResolverObject = ResolverObject & {
@@ -84,7 +83,10 @@ export type TypeDefinitionField = ResolverObject & {
 };
 
 export type TypeDefinition = {
-  [x: string]: TypeDefinitionField;
+  description?: string;
+  fields: {
+    [x: string]: TypeDefinitionField;
+  };
 };
 
 export type JsType = "string" | "number" | "boolean" | "unknown";
@@ -100,6 +102,7 @@ export type Schema = {
 
 export type ScalarDefinition = {
   name: string;
+  description?: string;
   types: string[];
   serialize?: ScalarDefinitionFunction;
   parseValue?: ScalarDefinitionFunction;

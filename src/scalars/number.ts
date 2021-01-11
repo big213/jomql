@@ -13,6 +13,7 @@ function validate(value: unknown, fieldPath: string[]) {
 export const number: ScalarDefinition = {
   name: "number",
   types: ["number"],
+  description: "Numerical value",
   serialize: validate,
   parseValue: validate,
 };

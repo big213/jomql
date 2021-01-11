@@ -170,16 +170,16 @@ export function generateJomqlResolverTree(
   const lookupValue = getLookupValue();
 
   //ensure the id field is there, if it is part of the typeDef
-  if ("id" in typeDef && !("id" in externalQuery)) {
+  if ("id" in typeDef.fields && !("id" in externalQuery)) {
     externalQuery.id = lookupValue;
   }
 
   //if the * field is provided, make sure all non-arg, non-hidden fields are there
   if ("*" in externalQuery && externalQuery["*"] === lookupValue) {
-    for (const field in typeDef) {
+    for (const field in typeDef.fields) {
       if (
-        !typeDef[field].hidden &&
-        !typeDef[field].args &&
+        !typeDef.fields[field].hidden &&
+        !typeDef.fields[field].args &&
         !(field in externalQuery)
       ) {
         externalQuery[field] = lookupValue;
@@ -193,7 +193,7 @@ export function generateJomqlResolverTree(
     if (field === "__args") {
       validateExternalArgs(
         externalQuery.__args,
-        typeDef[field].args,
+        typeDef.fields[field].args,
         parentFields
       );
       continue;
@@ -201,20 +201,20 @@ export function generateJomqlResolverTree(
 
     const parentsPlusCurrentField = parentFields.concat(field);
 
-    if (!(field in typeDef))
+    if (!(field in typeDef.fields))
       throw new Error(
         `Invalid Query: Unknown field '${parentsPlusCurrentField.join(".")}'`
       );
 
     // deny hidden fields
-    if (typeDef[field].hidden) {
+    if (typeDef.fields[field].hidden) {
       throw new Error(
         `Invalid Query: Hidden field '${parentsPlusCurrentField.join(".")}'`
       );
     }
 
     // deny fields with no type
-    if (!typeDef[field].type) {
+    if (!typeDef.fields[field].type) {
       throw new Error(
         `Invalid Query: Mis-configured field '${parentsPlusCurrentField.join(
           "."
@@ -237,14 +237,14 @@ export function generateJomqlResolverTree(
         )}'`
       );
 
-    const type = typeDef[field].type;
+    const type = typeDef.fields[field].type;
 
     const typename = isScalarDefinition(type) ? type.name : type;
 
     // if is ScalarDefinition, set type to type.name and getter to type.serialize
     jomqlResolverObject[field] = {
       typename,
-      typeDef: typeDef[field],
+      typeDef: typeDef.fields[field],
     };
 
     // if nested field, set query and nested
@@ -252,7 +252,7 @@ export function generateJomqlResolverTree(
       // validate the query.__args at this point
       validateExternalArgs(
         externalQuery[field].__args,
-        typeDef[field].args,
+        typeDef.fields[field].args,
         [field].concat(parentFields)
       );
 
@@ -260,7 +260,7 @@ export function generateJomqlResolverTree(
 
       // only if no resolver do we recursively add to tree
       // if there is a resolver, the sub-tree should be generated in the resolver
-      if (!typeDef[field].resolver) {
+      if (!typeDef.fields[field].resolver) {
         const nestedTypeDef = getTypeDefs().get(typename);
 
         if (!nestedTypeDef) {
