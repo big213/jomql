@@ -2,10 +2,10 @@ import { Request } from "express";
 import { getLookupValue, getTypeDefs, getInputDefs } from "..";
 import {
   TypeDefinition,
-  JomqlResolverObject,
+  JomqlResolverNode,
   JomqlQuery,
   JomqlQueryArgs,
-  JomqlOutput,
+  JomqlResultsNode,
   isScalarDefinition,
   ResolverObject,
   isInputTypeDefinition,
@@ -62,7 +62,8 @@ export function validateExternalArgs(
   if (isInputTypeDefinition(argDefType)) {
     let argsArray: (JomqlQueryArgs | undefined)[];
     const fields = argDefType.fields;
-    if (Array.isArray(args)) {
+    // if args is array and it is supposed to be array, process each array element
+    if (Array.isArray(args) && argDefinition.isArray) {
       argsArray = args;
     } else {
       argsArray = [args];
@@ -106,8 +107,8 @@ export function validateExternalArgs(
     // replace value if parseValue
     const parseValue = argDefType.parseValue;
     if (parseValue) {
-      // if arg is an array, loop through
-      if (Array.isArray(args)) {
+      // if arg is an array and supposed to be array, loop through
+      if (Array.isArray(args) && argDefinition.isArray) {
         parsedArgs = args.map((ele: unknown) => parseValue(ele, fieldPath));
       } else {
         parsedArgs = parseValue(args, fieldPath);
@@ -161,10 +162,10 @@ export function generateJomqlResolverTree(
   externalQuery: JomqlQuery,
   typeDef: TypeDefinition,
   parentFields: string[] = []
-): JomqlResolverObject {
+): JomqlResolverNode {
   if (!typeDef) throw new Error("Invalid typeDef");
 
-  const jomqlResolverObject: JomqlResolverObject = {};
+  const jomqlResolverNode: JomqlResolverNode = {};
 
   //define the lookupValue
   const lookupValue = getLookupValue();
@@ -189,7 +190,8 @@ export function generateJomqlResolverTree(
   }
 
   for (const field in externalQuery) {
-    // validate __args, then skip
+    // no longer validating args field here. at root level, args should always be handled in router.ts
+    /*
     if (field === "__args") {
       validateExternalArgs(
         externalQuery.__args,
@@ -198,6 +200,7 @@ export function generateJomqlResolverTree(
       );
       continue;
     }
+    */
 
     const parentsPlusCurrentField = parentFields.concat(field);
 
@@ -242,7 +245,7 @@ export function generateJomqlResolverTree(
     const typename = isScalarDefinition(type) ? type.name : type;
 
     // if is ScalarDefinition, set type to type.name and getter to type.serialize
-    jomqlResolverObject[field] = {
+    jomqlResolverNode[field] = {
       typename,
       typeDef: typeDef.fields[field],
     };
@@ -256,7 +259,7 @@ export function generateJomqlResolverTree(
         [field].concat(parentFields)
       );
 
-      jomqlResolverObject[field].query = externalQuery[field];
+      jomqlResolverNode[field].query = externalQuery[field];
 
       // only if no resolver do we recursively add to tree
       // if there is a resolver, the sub-tree should be generated in the resolver
@@ -267,7 +270,7 @@ export function generateJomqlResolverTree(
           throw new Error(`TypeDef for '${typename}' not found`);
         }
 
-        jomqlResolverObject[field].nested = generateJomqlResolverTree(
+        jomqlResolverNode[field].nested = generateJomqlResolverTree(
           externalQuery[field],
           nestedTypeDef,
           parentsPlusCurrentField
@@ -276,56 +279,51 @@ export function generateJomqlResolverTree(
     }
   }
 
-  return jomqlResolverObject;
+  return jomqlResolverNode;
 }
 
 // resolves the queries, and attaches them to the obj (if possible)
 export async function processJomqlResolverTree(
-  jomqlOutput: JomqlOutput,
-  jomqlResolverObject: JomqlResolverObject,
+  jomqlResultsNode: JomqlResultsNode,
+  jomqlResolverNode: JomqlResolverNode,
   typename: string,
   req: Request,
   args: JomqlQueryArgs,
   fieldPath: string[] = []
 ) {
   // if output is null, cut the tree short and return
-  if (jomqlOutput === null) return;
+  if (jomqlResultsNode === null) return;
 
   // add the typename field if the output is an object and there is a corresponding type
-  if (
-    typename &&
-    jomqlOutput &&
-    typeof jomqlOutput === "object" &&
-    !Array.isArray(jomqlOutput)
-  ) {
-    jomqlOutput.__typename = typename;
+  if (typename && isObject(jomqlResultsNode)) {
+    jomqlResultsNode.__typename = typename;
   }
 
-  for (const field in jomqlResolverObject) {
+  for (const field in jomqlResolverNode) {
     // if field has a resolver, attempt to resolve and put in obj
-    const resolverFn = jomqlResolverObject[field].typeDef.resolver;
+    const resolverFn = jomqlResolverNode[field].typeDef.resolver;
 
     // if query is empty, must be raw lookup field. skip
     if (resolverFn) {
-      jomqlOutput[field] = await resolverFn(
+      jomqlResultsNode[field] = await resolverFn(
         req,
         args,
-        jomqlResolverObject[field].query,
-        jomqlResolverObject[field].typename,
-        jomqlOutput,
+        jomqlResolverNode[field].query,
+        jomqlResolverNode[field].typename,
+        jomqlResultsNode,
         fieldPath.concat(field)
       );
     } else if (
-      jomqlResolverObject[field].nested &&
-      !jomqlResolverObject[field].typeDef.dataloader
+      jomqlResolverNode[field].nested &&
+      !jomqlResolverNode[field].typeDef.dataloader
     ) {
       // if field
-      const nestedResolverObject = jomqlResolverObject[field].nested;
+      const nestedResolverObject = jomqlResolverNode[field].nested;
       if (nestedResolverObject)
         await processJomqlResolverTree(
-          jomqlOutput[field],
+          jomqlResultsNode[field],
           nestedResolverObject,
-          jomqlResolverObject[field].typename,
+          jomqlResolverNode[field].typename,
           req,
           args,
           fieldPath.concat(field)
@@ -333,36 +331,36 @@ export async function processJomqlResolverTree(
     }
 
     // if typeDef of field is ScalarDefinition, apply the serialize function to the end result
-    const type = jomqlResolverObject[field].typeDef.type;
+    const type = jomqlResolverNode[field].typeDef.type;
     if (isScalarDefinition(type)) {
       if (type.serialize)
-        jomqlOutput[field] = await type.serialize(
-          jomqlOutput[field],
+        jomqlResultsNode[field] = await type.serialize(
+          jomqlResultsNode[field],
           fieldPath
         );
     }
 
     // check for nulls
     validateResultFields(
-      jomqlOutput[field],
-      jomqlResolverObject[field].typeDef,
+      jomqlResultsNode[field],
+      jomqlResolverNode[field].typeDef,
       fieldPath
     );
   }
 }
 
 export async function handleAggregatedQueries(
-  resultsArray: JomqlOutput[],
-  jomqlResolverObject: JomqlResolverObject,
+  resultsArray: JomqlResultsNode[],
+  jomqlResolverNode: JomqlResolverNode,
   typename: string,
   req: Request,
   args: JomqlQueryArgs,
   fieldPath: string[] = []
 ) {
-  for (const field in jomqlResolverObject) {
-    const dataloaderFn = jomqlResolverObject[field].typeDef.dataloader;
-    const nestedResolver = jomqlResolverObject[field].nested;
-    if (dataloaderFn && jomqlResolverObject[field].query) {
+  for (const field in jomqlResolverNode) {
+    const dataloaderFn = jomqlResolverNode[field].typeDef.dataloader;
+    const nestedResolver = jomqlResolverNode[field].nested;
+    if (dataloaderFn && jomqlResolverNode[field].query) {
       const keySet = new Set();
 
       // aggregate ids
@@ -374,7 +372,7 @@ export async function handleAggregatedQueries(
       const aggregatedResults = await dataloaderFn(
         req,
         { id: [...keySet] },
-        jomqlResolverObject[field].query,
+        jomqlResolverNode[field].query,
         typename,
         {},
         fieldPath.concat(field)
@@ -393,14 +391,18 @@ export async function handleAggregatedQueries(
     } else if (nestedResolver) {
       // if field does not have a dataloader, it must be nested.
       // build the array of records that will need replacing and go deeper
-      const nestedResultsArray = resultsArray.map((result) => {
-        if (result) return result[field];
-      });
+      const nestedResultsArray = resultsArray.reduce(
+        (total: JomqlResultsNode[], result) => {
+          if (result) total.push(result[field]);
+          return total;
+        },
+        []
+      );
 
       await handleAggregatedQueries(
         nestedResultsArray,
         nestedResolver,
-        jomqlResolverObject[field].typename,
+        jomqlResolverNode[field].typename,
         req,
         args,
         fieldPath.concat(field)

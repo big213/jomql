@@ -14,7 +14,7 @@ export {
   ArgDefinition,
   InputTypeDefinition,
   ScalarDefinition,
-  JomqlResolverObject,
+  JomqlResolverNode,
   isScalarDefinition,
   isInputTypeDefinition,
   JsType,

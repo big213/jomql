@@ -1,3 +1,5 @@
+import type { Request } from "express";
+
 export function isScalarDefinition(
   ele: string | ScalarDefinition
 ): ele is ScalarDefinition {
@@ -32,7 +34,7 @@ export type JomqlError = {
 
 export type Params = {
   readonly schema: Schema;
-  readonly debug?: Boolean;
+  readonly debug?: boolean;
   readonly lookupValue?: string | boolean | number;
   readonly jomqlPath?: string;
 };
@@ -51,6 +53,13 @@ export type InputTypeDefinition = {
   inputsValidator?: (args: any, fieldPath: string[]) => void;
 };
 
+export type TypeDefinition = {
+  description?: string;
+  fields: {
+    [x: string]: TypeDefinitionField;
+  } & { __args?: never };
+};
+
 export type ResolverObject = {
   type: string | ScalarDefinition;
   isArray?: boolean;
@@ -66,8 +75,6 @@ export type RootResolverObject = ResolverObject & {
   resolver: ResolverFunction;
 };
 
-export type RootResolverType = "query" | "mutation" | "subscription";
-
 export type RootResolverMap = Map<string, RootResolverObject>;
 
 export type TypeDefinitionField = ResolverObject & {
@@ -76,17 +83,10 @@ export type TypeDefinitionField = ResolverObject & {
   };
   required?: boolean;
   hidden?: boolean;
-  dataloader?: any;
+  dataloader?: Function;
   deleter?: Function;
   setter?: Function;
   updater?: Function;
-};
-
-export type TypeDefinition = {
-  description?: string;
-  fields: {
-    [x: string]: TypeDefinitionField;
-  };
 };
 
 export type JsType = "string" | "number" | "boolean" | "unknown";
@@ -114,20 +114,20 @@ export type ScalarDefinitionFunction = (
 ) => any;
 
 export type ResolverFunction = (
-  req: any,
-  args: any,
-  query?: any,
+  req: Request,
+  args?: any,
+  query?: JomqlQuery,
   typename?: string,
   currentObject?: any,
   fieldPath?: string[]
 ) => any;
 
-export type JomqlResolverObject = {
+export type JomqlResolverNode = {
   [x: string]: {
     typeDef: TypeDefinitionField;
     query?: JomqlQuery;
     typename: string;
-    nested?: JomqlResolverObject;
+    nested?: JomqlResolverNode;
   };
 };
 
@@ -136,10 +136,10 @@ export type JomqlQuery = {
   __args?: JomqlQueryArgs;
 };
 
-export type JomqlQueryArgs = null | {
-  [x: string]: any;
+export type JomqlQueryArgs = {
+  [x: string]: JomqlQueryArgs | undefined;
 };
 
-export type JomqlOutput = null | {
-  [x: string]: any;
+export type JomqlResultsNode = null | {
+  [x: string]: JomqlResultsNode | any;
 };

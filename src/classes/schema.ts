@@ -30,7 +30,19 @@ type tsRootType = {
 
 export class TsSchemaGenerator {
   schema: Schema;
-  scaffoldStr: string = `
+  scaffoldStr: string = `// Query builder
+const queryResult = executeJomql({
+  // Start typing here to get hints
+  
+});
+
+export function executeJomql<Key extends keyof Root>(
+  query: GetQuery<Key>
+): GetResponse<Key> {
+  let data: any;
+  return data;
+}
+
 // scaffolding
 export type GetQuery<K extends keyof Root> = Record<
   K,
