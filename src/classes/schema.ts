@@ -64,12 +64,9 @@ type Queryize<T> = T extends never
   : T extends any[]
   ? Queryize<ElementType<T>>
   : args extends keyof T
-  ? Omit<
-      {
-        [P in keyof T]?: Queryize<T[P]>;
-      },
-      args
-    > &
+  ? {
+      [P in keyof T as Exclude<P, args>]?: Queryize<T[P]>;
+    } &
       (undefined extends T[args] ? { __args?: T[args] } : { __args: T[args] })
   : {
       [P in keyof T]?: Queryize<T[P]>;
@@ -358,12 +355,12 @@ type Argize<T, Args> = Args extends undefined
     tsTypeField.forEach((value, key) => {
       if (isNestedValue(value)) {
         // nested tsTypeField
-        str += `${key}:${this.buildTsDocument(value)};`;
+        str += `"${key}":${this.buildTsDocument(value)};`;
       } else {
         // string value
         // has description? if so, add jsdoc
         if (value.description) str += `/**${value.description}*/`;
-        str += `${key + (value.isOptional ? "?" : "")}:(${
+        str += `"${key}"${value.isOptional ? "?" : ""}:(${
           (value.value === "" ? "undefined" : value.value) +
           (value.isNullable ? "|null" : "") +
           ")" +
