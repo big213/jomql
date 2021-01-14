@@ -332,12 +332,24 @@ export async function processJomqlResolverTree(
 
     // if typeDef of field is ScalarDefinition, apply the serialize function to the end result
     const type = jomqlResolverNode[field].typeDef.type;
+
     if (isScalarDefinition(type)) {
-      if (type.serialize)
-        jomqlResultsNode[field] = await type.serialize(
-          jomqlResultsNode[field],
-          fieldPath
-        );
+      const serializeFn = type.serialize;
+      if (serializeFn) {
+        if (
+          Array.isArray(jomqlResultsNode[field]) &&
+          jomqlResolverNode[field].typeDef.isArray
+        ) {
+          jomqlResultsNode[field] = jomqlResultsNode[
+            field
+          ].map((ele: unknown) => serializeFn(ele, fieldPath));
+        } else {
+          jomqlResultsNode[field] = await serializeFn(
+            jomqlResultsNode[field],
+            fieldPath
+          );
+        }
+      }
     }
 
     // check for nulls

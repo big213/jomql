@@ -1,6 +1,6 @@
 {
   "name": "jomql",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Series of functions for implementing graphql-inspired methods for fetching data in JSON",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

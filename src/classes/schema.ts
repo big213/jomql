@@ -46,10 +46,10 @@ export function executeJomql<Key extends keyof Root>(
 // scaffolding
 export type GetQuery<K extends keyof Root> = Record<
   K,
-  Argize<Queryize<Root[K]["Query"]>, Root[K]["Args"]>
+  Argize<Queryize<Root[K]["Type"]>, Root[K]["Args"]>
 >;
 
-export type GetResponse<K extends keyof Root> = Omit<Root[K]["Response"], args>;
+export type GetResponse<K extends keyof Root> = Omit<Root[K]["Type"], args>;
 
 type Primitive = string | number | boolean | undefined | null;
 
@@ -163,14 +163,7 @@ type Argize<T, Args> = Args extends undefined
       // parse the argDefinitions
       const argReference = this.processArgDefinition(rootResolver.args, key);
 
-      rootObject.set("Query", {
-        value: typename,
-        isArray: false,
-        isNullable: false,
-        isOptional: false,
-      });
-
-      rootObject.set("Response", {
+      rootObject.set("Type", {
         value: typename,
         isArray: false,
         isNullable: false,
