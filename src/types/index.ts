@@ -29,6 +29,7 @@ export type JomqlResponse = {
 
 export type JomqlError = {
   message: string;
+  fieldPath?: string[];
   stack?: string;
 };
 
@@ -65,14 +66,13 @@ export type ResolverObject = {
   isArray?: boolean;
   allowNull: boolean;
   args?: ArgDefinition;
-  resolver?: ResolverFunction;
   description?: string;
 };
 
 export type RootResolverObject = ResolverObject & {
   method: ValidMethod;
   route: string;
-  resolver: ResolverFunction;
+  resolver: RootResolverFunction;
 };
 
 export type RootResolverMap = Map<string, RootResolverObject>;
@@ -81,9 +81,10 @@ export type TypeDefinitionField = ResolverObject & {
   customOptions?: {
     [x: string]: any;
   };
+  resolver?: ResolverFunction;
   required?: boolean;
   hidden?: boolean;
-  dataloader?: Function;
+  dataloader?: DataloaderFunction;
   deleter?: Function;
   setter?: Function;
   updater?: Function;
@@ -108,19 +109,38 @@ export type ScalarDefinition = {
   parseValue?: ScalarDefinitionFunction;
 };
 
-export type ScalarDefinitionFunction = (
-  value: unknown,
-  fieldPath: string[]
-) => any;
+export type ScalarDefinitionFunction = (value: unknown) => any;
 
-export type ResolverFunction = (
-  req: Request,
-  args?: any,
-  query?: JomqlQuery,
-  typename?: string,
-  currentObject?: any,
-  fieldPath?: string[]
-) => any;
+export type RootResolverFunctionInput = {
+  req: Request;
+  fieldPath: string[];
+  args: any;
+  query?: JomqlQuery;
+};
+
+export type RootResolverFunction = (input: RootResolverFunctionInput) => any;
+
+export type ResolverFunctionInput = {
+  req: Request;
+  fieldPath: string[];
+  args: any;
+  query: JomqlQuery | undefined;
+  typename: string;
+  currentObject: any;
+};
+
+export type ResolverFunction = (input: ResolverFunctionInput) => any;
+
+export type DataloaderFunctionInput = {
+  req: Request;
+  fieldPath: string[];
+  args: any;
+  query: JomqlQuery;
+  typename: string;
+  currentObject: any;
+};
+
+export type DataloaderFunction = (input: DataloaderFunctionInput) => any;
 
 export type JomqlResolverNode = {
   [x: string]: {

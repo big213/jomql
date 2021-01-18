@@ -1,5 +1,5 @@
 import { Request } from "express";
-import { getLookupValue, getTypeDefs, getInputDefs } from "..";
+import { getLookupValue, getTypeDefs, getInputDefs, lookupSymbol } from "..";
 import {
   TypeDefinition,
   JomqlResolverNode,
@@ -11,6 +11,7 @@ import {
   isInputTypeDefinition,
   ArgDefinition,
 } from "../types";
+import { JomqlArgsError, JomqlFieldError, JomqlParseError } from "../classes";
 
 type stringKeyObject = { [x: string]: any };
 
@@ -26,12 +27,13 @@ export function validateExternalArgs(
 ) {
   let parsedArgs;
 
-  const fieldString = ["root"].concat(...fieldPath).join(".");
-
   // if no argDefinition and args provided, throw error
   if (!argDefinition) {
     if (args)
-      throw new Error(`Not expecting any args for field: '${fieldString}'`);
+      throw new JomqlArgsError({
+        message: `Not expecting any args`,
+        fieldPath,
+      });
     else return;
   }
 
@@ -40,11 +42,17 @@ export function validateExternalArgs(
 
   // if argDefinition.required and args is undefined, throw err
   if (argDefinition.required && args === undefined)
-    throw new Error(`Args is required for field: '${fieldString}'`);
+    throw new JomqlArgsError({
+      message: `Args is required`,
+      fieldPath,
+    });
 
   // if argDefinition.isArray and args is not array, throw err
   if (argDefinition.isArray && !Array.isArray(args))
-    throw new Error(`Expecting array for field: '${fieldString}'`);
+    throw new JomqlArgsError({
+      message: `Array expected`,
+      fieldPath,
+    });
 
   let argDefType = argDefinition.type;
 
@@ -52,9 +60,10 @@ export function validateExternalArgs(
   if (typeof argDefType === "string") {
     const inputDef = getInputDefs().get(argDefType);
     if (!inputDef)
-      throw new Error(
-        `Unknown inputDef '${argDefType}' for field '${fieldString}'`
-      );
+      throw new JomqlArgsError({
+        message: `Unknown inputDef '${argDefType}'`,
+        fieldPath,
+      });
     argDefType = inputDef;
   }
 
@@ -72,7 +81,10 @@ export function validateExternalArgs(
     // process all args
     for (const arg of argsArray) {
       if (!isObject(arg))
-        throw new Error(`Expecting object args for field: '${fieldString}'`);
+        throw new JomqlArgsError({
+          message: `Object expected`,
+          fieldPath,
+        });
 
       const keysToValidate = new Set(Object.keys(arg));
       Object.entries(fields).forEach(([key, argDef]) => {
@@ -90,11 +102,10 @@ export function validateExternalArgs(
 
       // check if any remaining keys to validate (aka unknown args)
       if (keysToValidate.size > 0) {
-        throw new Error(
-          `Unknown args '${[...keysToValidate].join(
-            ","
-          )}' for field: '${fieldString}'`
-        );
+        throw new JomqlArgsError({
+          message: `Unknown args '${[...keysToValidate].join(",")}'`,
+          fieldPath,
+        });
       }
 
       // perform validation on results
@@ -106,12 +117,22 @@ export function validateExternalArgs(
     // if argDefinition.type is scalarDefinition, attempt to parseValue args
     // replace value if parseValue
     const parseValue = argDefType.parseValue;
-    if (parseValue) {
-      // if arg is an array and supposed to be array, loop through
-      if (Array.isArray(args) && argDefinition.isArray) {
-        parsedArgs = args.map((ele: unknown) => parseValue(ele, fieldPath));
-      } else {
-        parsedArgs = parseValue(args, fieldPath);
+
+    // if arg is null, skip
+    if (parseValue && args !== null) {
+      try {
+        // if arg is an array and supposed to be array, loop through
+        if (Array.isArray(args) && argDefinition.isArray) {
+          parsedArgs = args.map((ele: unknown) => parseValue(ele));
+        } else {
+          parsedArgs = parseValue(args);
+        }
+      } catch {
+        // transform any errors thrown into JomqlParseError
+        throw new JomqlParseError({
+          message: `Invalid scalar value for '${argDefType.name}'`,
+          fieldPath: fieldPath,
+        });
       }
     }
   } else {
@@ -133,10 +154,12 @@ export function validateResultFields(
   resolverObject: ResolverObject,
   fieldPath: string[]
 ) {
-  const fieldString = ["root"].concat(...fieldPath).join(".");
   if (resolverObject.isArray) {
     if (!Array.isArray(value)) {
-      throw new Error(`Array value expected for field '${fieldString}'`);
+      throw new JomqlFieldError({
+        message: `Array expected`,
+        fieldPath,
+      });
     }
     value.forEach((ele) => {
       validateResultNullish(ele, resolverObject, fieldPath);
@@ -153,27 +176,28 @@ export function validateResultNullish(
   fieldPath: string[]
 ) {
   if ((value === null || value === undefined) && !resolverObject.allowNull) {
-    const fieldString = ["root"].concat(...fieldPath).join(".");
-    throw new Error(`Null value not allowed for field: '${fieldString}'`);
+    throw new JomqlFieldError({
+      message: `Null value not allowed`,
+      fieldPath,
+    });
   }
 }
 
 export function generateJomqlResolverTree(
   externalQuery: JomqlQuery,
   typeDef: TypeDefinition,
-  parentFields: string[] = []
+  fieldPath: string[] = []
 ): JomqlResolverNode {
-  if (!typeDef) throw new Error("Invalid typeDef");
+  if (!typeDef)
+    throw new JomqlFieldError({
+      message: `Invalid typeDef`,
+      fieldPath,
+    });
 
   const jomqlResolverNode: JomqlResolverNode = {};
 
-  //define the lookupValue
+  // define the lookupValue
   const lookupValue = getLookupValue();
-
-  //ensure the id field is there, if it is part of the typeDef
-  if ("id" in typeDef.fields && !("id" in externalQuery)) {
-    externalQuery.id = lookupValue;
-  }
 
   //if the * field is provided, make sure all non-arg, non-hidden fields are there
   if ("*" in externalQuery && externalQuery["*"] === lookupValue) {
@@ -190,61 +214,71 @@ export function generateJomqlResolverTree(
   }
 
   for (const field in externalQuery) {
-    // no longer validating args field here. at root level, args should always be handled in router.ts
-    /*
-    if (field === "__args") {
-      validateExternalArgs(
-        externalQuery.__args,
-        typeDef.fields[field].args,
-        parentFields
-      );
-      continue;
-    }
-    */
-
-    const parentsPlusCurrentField = parentFields.concat(field);
+    const parentsPlusCurrentField = fieldPath.concat(field);
 
     if (!(field in typeDef.fields))
-      throw new Error(
-        `Invalid Query: Unknown field '${parentsPlusCurrentField.join(".")}'`
-      );
+      throw new JomqlFieldError({
+        message: `Unknown field`,
+        fieldPath: parentsPlusCurrentField,
+      });
 
     // deny hidden fields
     if (typeDef.fields[field].hidden) {
-      throw new Error(
-        `Invalid Query: Hidden field '${parentsPlusCurrentField.join(".")}'`
-      );
+      throw new JomqlFieldError({
+        message: `Hidden field`,
+        fieldPath: parentsPlusCurrentField,
+      });
     }
 
     // deny fields with no type
     if (!typeDef.fields[field].type) {
-      throw new Error(
-        `Invalid Query: Mis-configured field '${parentsPlusCurrentField.join(
-          "."
-        )}'`
-      );
+      throw new JomqlFieldError({
+        message: `Mis-configured field`,
+        fieldPath: parentsPlusCurrentField,
+      });
     }
 
     // field must either be lookupValue OR an object
 
     // check if field is lookupValue
-    const isLookupField = externalQuery[field] === lookupValue;
+    const isLookupField =
+      externalQuery[field] === lookupValue ||
+      externalQuery[field] === lookupSymbol;
 
     const isNestedField = isObject(externalQuery[field]);
 
+    const type = typeDef.fields[field].type;
+
+    const isLeafNode = isScalarDefinition(type);
+
     // field must either be lookupValue OR an object
     if (!isLookupField && !isNestedField)
-      throw new Error(
-        `Invalid Query: Invalid field RHS '${parentsPlusCurrentField.join(
-          "."
-        )}'`
-      );
+      throw new JomqlFieldError({
+        message: `Invalid field RHS`,
+        fieldPath: parentsPlusCurrentField,
+      });
 
-    const type = typeDef.fields[field].type;
+    // if leafNode and nested, MUST be only with __args
+    if (isLeafNode && isNestedField) {
+      if (
+        !("__args" in externalQuery[field]) ||
+        Object.keys(externalQuery[field]).length !== 1
+      )
+        throw new JomqlFieldError({
+          message: `Scalar node can only accept __args and no other field`,
+          fieldPath: parentsPlusCurrentField,
+        });
+    }
+
+    // if not leafNode and isLookupField, deny
+    if (!isLeafNode && isLookupField)
+      throw new JomqlFieldError({
+        message: `Resolved node must be an object with nested fields`,
+        fieldPath: parentsPlusCurrentField,
+      });
 
     const typename = isScalarDefinition(type) ? type.name : type;
 
-    // if is ScalarDefinition, set type to type.name and getter to type.serialize
     jomqlResolverNode[field] = {
       typename,
       typeDef: typeDef.fields[field],
@@ -256,7 +290,7 @@ export function generateJomqlResolverTree(
       validateExternalArgs(
         externalQuery[field].__args,
         typeDef.fields[field].args,
-        [field].concat(parentFields)
+        fieldPath.concat([field, "__args"])
       );
 
       jomqlResolverNode[field].query = externalQuery[field];
@@ -267,7 +301,10 @@ export function generateJomqlResolverTree(
         const nestedTypeDef = getTypeDefs().get(typename);
 
         if (!nestedTypeDef) {
-          throw new Error(`TypeDef for '${typename}' not found`);
+          throw new JomqlFieldError({
+            message: `TypeDef for '${typename}' not found`,
+            fieldPath: parentsPlusCurrentField,
+          });
         }
 
         jomqlResolverNode[field].nested = generateJomqlResolverTree(
@@ -295,24 +332,25 @@ export async function processJomqlResolverTree(
   if (jomqlResultsNode === null) return;
 
   // add the typename field if the output is an object and there is a corresponding type
-  if (typename && isObject(jomqlResultsNode)) {
+  /*   if (typename && isObject(jomqlResultsNode)) {
     jomqlResultsNode.__typename = typename;
-  }
+  } */
 
   for (const field in jomqlResolverNode) {
+    const currentFieldPath = fieldPath.concat(field);
     // if field has a resolver, attempt to resolve and put in obj
     const resolverFn = jomqlResolverNode[field].typeDef.resolver;
 
     // if query is empty, must be raw lookup field. skip
     if (resolverFn) {
-      jomqlResultsNode[field] = await resolverFn(
+      jomqlResultsNode[field] = await resolverFn({
         req,
+        fieldPath: currentFieldPath,
         args,
-        jomqlResolverNode[field].query,
-        jomqlResolverNode[field].typename,
-        jomqlResultsNode,
-        fieldPath.concat(field)
-      );
+        query: jomqlResolverNode[field].query,
+        typename: jomqlResolverNode[field].typename,
+        currentObject: jomqlResultsNode,
+      });
     } else if (
       jomqlResolverNode[field].nested &&
       !jomqlResolverNode[field].typeDef.dataloader
@@ -326,38 +364,46 @@ export async function processJomqlResolverTree(
           jomqlResolverNode[field].typename,
           req,
           args,
-          fieldPath.concat(field)
+          currentFieldPath
         );
     }
+
+    // check for nulls and ensure array fields are arrays
+    validateResultFields(
+      jomqlResultsNode[field],
+      jomqlResolverNode[field].typeDef,
+      currentFieldPath
+    );
 
     // if typeDef of field is ScalarDefinition, apply the serialize function to the end result
     const type = jomqlResolverNode[field].typeDef.type;
 
     if (isScalarDefinition(type)) {
       const serializeFn = type.serialize;
-      if (serializeFn) {
-        if (
-          Array.isArray(jomqlResultsNode[field]) &&
-          jomqlResolverNode[field].typeDef.isArray
-        ) {
-          jomqlResultsNode[field] = jomqlResultsNode[
-            field
-          ].map((ele: unknown) => serializeFn(ele, fieldPath));
-        } else {
-          jomqlResultsNode[field] = await serializeFn(
-            jomqlResultsNode[field],
-            fieldPath
-          );
+      // if field is null, skip
+      if (serializeFn && jomqlResultsNode[field] !== null) {
+        try {
+          if (
+            Array.isArray(jomqlResultsNode[field]) &&
+            jomqlResolverNode[field].typeDef.isArray
+          ) {
+            jomqlResultsNode[field] = jomqlResultsNode[
+              field
+            ].map((ele: unknown) => serializeFn(ele));
+          } else {
+            jomqlResultsNode[field] = await serializeFn(
+              jomqlResultsNode[field]
+            );
+          }
+        } catch {
+          // transform any errors thrown into JomqlParseError
+          throw new JomqlParseError({
+            message: `Invalid scalar value for '${type.name}'`,
+            fieldPath: currentFieldPath,
+          });
         }
       }
     }
-
-    // check for nulls
-    validateResultFields(
-      jomqlResultsNode[field],
-      jomqlResolverNode[field].typeDef,
-      fieldPath
-    );
   }
 }
 
@@ -370,6 +416,7 @@ export async function handleAggregatedQueries(
   fieldPath: string[] = []
 ) {
   for (const field in jomqlResolverNode) {
+    const currentFieldPath = fieldPath.concat(field);
     const dataloaderFn = jomqlResolverNode[field].typeDef.dataloader;
     const nestedResolver = jomqlResolverNode[field].nested;
     if (dataloaderFn && jomqlResolverNode[field].query) {
@@ -381,14 +428,14 @@ export async function handleAggregatedQueries(
       });
 
       // lookup all the ids
-      const aggregatedResults = await dataloaderFn(
+      const aggregatedResults = await dataloaderFn({
         req,
-        { id: [...keySet] },
-        jomqlResolverNode[field].query,
+        args: { id: [...keySet] },
+        query: jomqlResolverNode[field].query!,
         typename,
-        {},
-        fieldPath.concat(field)
-      );
+        currentObject: {},
+        fieldPath: currentFieldPath,
+      });
 
       // build id -> record map
       const recordMap = new Map();
@@ -417,7 +464,7 @@ export async function handleAggregatedQueries(
         jomqlResolverNode[field].typename,
         req,
         args,
-        fieldPath.concat(field)
+        currentFieldPath
       );
     }
   }

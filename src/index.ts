@@ -3,12 +3,11 @@ import {
   createJomqlRequestHandler,
   createRestRequestHandler,
 } from "./helpers/router";
-import type { Params, Schema, RootResolverObject } from "./types";
+import type { Params, Schema } from "./types";
 export {
   RootResolverMap,
   RootResolverObject,
   Schema,
-  ResolverFunction,
   TypeDefinitionField,
   TypeDefinition,
   ArgDefinition,
@@ -18,18 +17,28 @@ export {
   isScalarDefinition,
   isInputTypeDefinition,
   JsType,
+  ResolverFunction,
+  RootResolverFunction,
+  JomqlQuery,
+  JomqlQueryArgs,
 } from "./types";
-export { JomqlFieldError } from "./classes";
+export { JomqlFieldError, JomqlArgsError, JomqlBaseError } from "./classes";
 export { TsSchemaGenerator } from "./classes/schema";
+import { JomqlInitializationError } from "./classes";
 
 let exportedSchema: Schema, exportedLookupValue: any, exportedDebug: boolean;
+
+// set a symbol for lookups
+export const lookupSymbol = Symbol("lookup");
 
 export function initializeJomql(app: Express, params: Params) {
   const { schema, debug, lookupValue = null, jomqlPath = "/jomql" } = params;
 
   // jomqlPath must start with '/'
   if (!jomqlPath.match(/^\//)) {
-    throw new Error("Invalid jomqlPath");
+    throw new JomqlInitializationError({
+      message: `Invalid jomql path`,
+    });
   }
 
   exportedSchema = schema;
@@ -44,7 +53,9 @@ export function initializeJomql(app: Express, params: Params) {
   // populate all RESTful routes. This should only be done on cold starts.
   schema.rootResolvers.forEach((item, key) => {
     if (item.route === jomqlPath)
-      throw new Error(`Duplicate route for jomql path: '${jomqlPath}'`);
+      throw new JomqlInitializationError({
+        message: `Duplicate route for jomql path: '${jomqlPath}'`,
+      });
 
     app[item.method](item.route, createRestRequestHandler(item, key));
   });
@@ -77,5 +88,3 @@ export {
   validateExternalArgs,
   validateResultFields,
 } from "./helpers/jomql";
-
-export { ErrorWrapper } from "./classes/errorWrapper";

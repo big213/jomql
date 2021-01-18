@@ -1,11 +1,8 @@
 import type { ScalarDefinition } from "../types";
-import { JomqlFieldError } from "../classes";
 
-function validate(value: unknown, fieldPath: string[]) {
-  if (value === null) return value;
+function validate(value: unknown) {
   const parsedValue = Number(value);
-  if (Number.isNaN(parsedValue))
-    throw new JomqlFieldError("Invalid number", fieldPath);
+  if (Number.isNaN(Number(value))) throw true;
 
   return parsedValue;
 }

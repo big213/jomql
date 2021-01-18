@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import { generateNormalResponse, generateErrorResponse } from "./response";
-import { ErrorWrapper } from "../classes/errorWrapper";
+import { JomqlBaseError, JomqlFieldError } from "../classes";
 import { isDebug } from "..";
 import { RootResolverObject } from "../types";
-import { validateExternalArgs, validateResultFields } from "./jomql";
+import { isObject, validateExternalArgs, validateResultFields } from "./jomql";
 
 export function createRestRequestHandler(
   rootResolverObject: RootResolverObject,
@@ -11,9 +11,13 @@ export function createRestRequestHandler(
 ) {
   return async function (req: Request, res: Response) {
     try {
-      const results = await rootResolverObject.resolver(req, {
-        ...req.query,
-        ...req.params,
+      const results = await rootResolverObject.resolver({
+        req,
+        fieldPath: [operationName],
+        args: {
+          ...req.query,
+          ...req.params,
+        },
       });
 
       // validate if result is null, array, etc.
@@ -32,13 +36,21 @@ export function createJomqlRequestHandler(
   return async function (req: Request, res: Response) {
     try {
       // handle jomql queries, check if req.body is object
-      if (Array.isArray(req.body)) throw new Error("Array body not allowed");
+      if (!isObject(req.body)) {
+        throw new JomqlFieldError({
+          message: `Request body must be object`,
+          fieldPath: [],
+        });
+      }
 
       // req must be an object at this point
       const requestedOperations = Object.keys(req.body);
 
       if (requestedOperations.length !== 1)
-        throw new Error("Exactly 1 operation required");
+        throw new JomqlFieldError({
+          message: `Exactly 1 root query required`,
+          fieldPath: [],
+        });
 
       const operation = requestedOperations[0];
       const query = req.body[operation];
@@ -46,30 +58,29 @@ export function createJomqlRequestHandler(
       const rootResolverObject = allRootResolversMap.get(operation);
 
       if (rootResolverObject) {
-        let results;
-        if (query) {
-          const { __args: jomqlArgs, ...jomqlQuery } = query;
-          // validate args in place.
-          validateExternalArgs(jomqlArgs, rootResolverObject.args, [operation]);
+        const { __args: jomqlArgs, ...jomqlQuery } = query;
+        // validate args in place.
+        validateExternalArgs(jomqlArgs, rootResolverObject.args, [
+          operation,
+          "__args",
+        ]);
 
-          results = await rootResolverObject.resolver(
-            req,
-            jomqlArgs,
-            jomqlQuery
-          );
-        } else {
-          results = await rootResolverObject.resolver(req, {
-            ...req.query,
-            ...req.params,
-          });
-        }
+        const results = await rootResolverObject.resolver({
+          req,
+          fieldPath: [operation],
+          args: jomqlArgs,
+          query: jomqlQuery,
+        });
 
         // validate if result is null, array, etc.
         validateResultFields(results, rootResolverObject, [operation]);
 
         sendSuccessResponse(results, res);
       } else {
-        throw new Error("Unrecognized jomql operation");
+        throw new JomqlFieldError({
+          message: `Unrecognized jomql root query '${operation}'`,
+          fieldPath: [],
+        });
       }
     } catch (err) {
       sendErrorResponse(err, res);
@@ -82,15 +93,19 @@ function sendErrorResponse(err: Error, res: Response) {
     console.log(err);
   }
 
-  // if not a wrapped error, wrap it
-  const wrappedError =
-    err instanceof ErrorWrapper
+  // if not a JomqlError, wrap it
+  const validatedError =
+    err instanceof JomqlBaseError
       ? err
-      : new ErrorWrapper(err.message, 500, "system-generated-error", err);
+      : new JomqlBaseError({
+          errorName: "JomqlGenericError",
+          message: err.message,
+          fieldPath: [],
+        });
 
-  const errorResponseObject = generateErrorResponse(wrappedError);
+  const errorResponseObject = generateErrorResponse(validatedError);
 
-  return res.status(wrappedError.statusCode).send(errorResponseObject);
+  return res.status(validatedError.statusCode).send(errorResponseObject);
 }
 
 function sendSuccessResponse(results: Error, res: Response) {
