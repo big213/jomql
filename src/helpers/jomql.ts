@@ -12,6 +12,7 @@ import {
   ArgDefinition,
 } from "../types";
 import { JomqlArgsError, JomqlFieldError, JomqlParseError } from "../classes";
+import e = require("express");
 
 type stringKeyObject = { [x: string]: any };
 
@@ -293,7 +294,10 @@ export function generateJomqlResolverTree(
         fieldPath.concat([field, "__args"])
       );
 
-      jomqlResolverNode[field].query = externalQuery[field];
+      // separate args from query
+      const { __args: args, ...query } = externalQuery[field];
+      jomqlResolverNode[field].args = args;
+      jomqlResolverNode[field].query = query;
 
       // only if no resolver do we recursively add to tree
       // if there is a resolver, the sub-tree should be generated in the resolver
@@ -325,7 +329,7 @@ export async function processJomqlResolverTree(
   jomqlResolverNode: JomqlResolverNode,
   typename: string,
   req: Request,
-  args: JomqlQueryArgs,
+  data: any,
   fieldPath: string[] = []
 ) {
   // if output is null, cut the tree short and return
@@ -341,31 +345,30 @@ export async function processJomqlResolverTree(
     // if field has a resolver, attempt to resolve and put in obj
     const resolverFn = jomqlResolverNode[field].typeDef.resolver;
 
-    // if query is empty, must be raw lookup field. skip
     if (resolverFn) {
       jomqlResultsNode[field] = await resolverFn({
         req,
         fieldPath: currentFieldPath,
-        args,
+        args: jomqlResolverNode[field].args,
         query: jomqlResolverNode[field].query,
         typename: jomqlResolverNode[field].typename,
         currentObject: jomqlResultsNode,
+        data,
       });
-    } else if (
-      jomqlResolverNode[field].nested &&
-      !jomqlResolverNode[field].typeDef.dataloader
-    ) {
-      // if field
-      const nestedResolverObject = jomqlResolverNode[field].nested;
-      if (nestedResolverObject)
-        await processJomqlResolverTree(
-          jomqlResultsNode[field],
-          nestedResolverObject,
-          jomqlResolverNode[field].typename,
-          req,
-          args,
-          currentFieldPath
-        );
+    } else {
+      // must be nested field.
+      if (!jomqlResolverNode[field].typeDef.defer) {
+        const nestedResolverObject = jomqlResolverNode[field].nested;
+        if (nestedResolverObject)
+          await processJomqlResolverTree(
+            jomqlResultsNode[field],
+            nestedResolverObject,
+            jomqlResolverNode[field].typename,
+            req,
+            data,
+            currentFieldPath
+          );
+      }
     }
 
     // check for nulls and ensure array fields are arrays
@@ -403,69 +406,6 @@ export async function processJomqlResolverTree(
           });
         }
       }
-    }
-  }
-}
-
-export async function handleAggregatedQueries(
-  resultsArray: JomqlResultsNode[],
-  jomqlResolverNode: JomqlResolverNode,
-  typename: string,
-  req: Request,
-  args: JomqlQueryArgs,
-  fieldPath: string[] = []
-) {
-  for (const field in jomqlResolverNode) {
-    const currentFieldPath = fieldPath.concat(field);
-    const dataloaderFn = jomqlResolverNode[field].typeDef.dataloader;
-    const nestedResolver = jomqlResolverNode[field].nested;
-    if (dataloaderFn && jomqlResolverNode[field].query) {
-      const keySet = new Set();
-
-      // aggregate ids
-      resultsArray.forEach((result) => {
-        if (result) keySet.add(result[field]);
-      });
-
-      // lookup all the ids
-      const aggregatedResults = await dataloaderFn({
-        req,
-        args: { id: [...keySet] },
-        query: jomqlResolverNode[field].query!,
-        typename,
-        currentObject: {},
-        fieldPath: currentFieldPath,
-      });
-
-      // build id -> record map
-      const recordMap = new Map();
-      aggregatedResults.forEach((result: any) => {
-        recordMap.set(result.id, result);
-      });
-
-      // join the records in memory
-      resultsArray.forEach((result) => {
-        if (result) result[field] = recordMap.get(result[field]);
-      });
-    } else if (nestedResolver) {
-      // if field does not have a dataloader, it must be nested.
-      // build the array of records that will need replacing and go deeper
-      const nestedResultsArray = resultsArray.reduce(
-        (total: JomqlResultsNode[], result) => {
-          if (result) total.push(result[field]);
-          return total;
-        },
-        []
-      );
-
-      await handleAggregatedQueries(
-        nestedResultsArray,
-        nestedResolver,
-        jomqlResolverNode[field].typename,
-        req,
-        args,
-        currentFieldPath
-      );
     }
   }
 }

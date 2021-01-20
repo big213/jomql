@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { JomqlArgsError } from "../classes";
 
 export function isScalarDefinition(
   ele: string | ScalarDefinition
@@ -82,9 +83,9 @@ export type TypeDefinitionField = ResolverObject & {
     [x: string]: any;
   };
   resolver?: ResolverFunction;
+  defer?: boolean;
   required?: boolean;
   hidden?: boolean;
-  dataloader?: DataloaderFunction;
   deleter?: Function;
   setter?: Function;
   updater?: Function;
@@ -127,25 +128,16 @@ export type ResolverFunctionInput = {
   query: JomqlQuery | undefined;
   typename: string;
   currentObject: any;
+  data?: any;
 };
 
 export type ResolverFunction = (input: ResolverFunctionInput) => any;
-
-export type DataloaderFunctionInput = {
-  req: Request;
-  fieldPath: string[];
-  args: any;
-  query: JomqlQuery;
-  typename: string;
-  currentObject: any;
-};
-
-export type DataloaderFunction = (input: DataloaderFunctionInput) => any;
 
 export type JomqlResolverNode = {
   [x: string]: {
     typeDef: TypeDefinitionField;
     query?: JomqlQuery;
+    args?: JomqlQueryArgs;
     typename: string;
     nested?: JomqlResolverNode;
   };

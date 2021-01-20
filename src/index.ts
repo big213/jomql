@@ -84,7 +84,6 @@ export * as BaseScalars from "./scalars";
 export {
   generateJomqlResolverTree,
   processJomqlResolverTree,
-  handleAggregatedQueries,
   validateExternalArgs,
   validateResultFields,
 } from "./helpers/jomql";
