@@ -1,6 +1,6 @@
 import { JomqlBaseError } from "../classes";
-import { JomqlResponse } from "../types";
 import { isDebug } from "..";
+import { JomqlResponse } from "../types";
 
 export function generateErrorResponse(error: JomqlBaseError): JomqlResponse {
   return generateJomqlResponse(null, error);

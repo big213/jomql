@@ -3,12 +3,21 @@ import {
   createJomqlRequestHandler,
   createRestRequestHandler,
 } from "./helpers/router";
-import type { Params, Schema } from "./types";
+export {
+  JomqlArgsError,
+  JomqlBaseError,
+  JomqlQueryError,
+  JomqlResultError,
+  JomqlInitializationError,
+} from "./classes";
+export { TsSchemaGenerator } from "./classes/schema";
+import { JomqlInitializationError } from "./classes";
+
+import type { Params, Schema, JomqlProcessorFunction } from "./types";
 export {
   RootResolverMap,
   RootResolverObject,
   Schema,
-  TypeDefinitionField,
   TypeDefinition,
   ArgDefinition,
   InputTypeDefinition,
@@ -21,18 +30,25 @@ export {
   RootResolverFunction,
   JomqlQuery,
   JomqlQueryArgs,
+  TypeDefinitionField,
 } from "./types";
-export { JomqlFieldError, JomqlArgsError, JomqlBaseError } from "./classes";
-export { TsSchemaGenerator } from "./classes/schema";
-import { JomqlInitializationError } from "./classes";
 
-let exportedSchema: Schema, exportedLookupValue: any, exportedDebug: boolean;
+let exportedSchema: Schema,
+  exportedLookupValue: any,
+  exportedDebug: boolean,
+  exportedCustomProcessor: boolean;
 
 // set a symbol for lookups
 export const lookupSymbol = Symbol("lookup");
 
 export function initializeJomql(app: Express, params: Params) {
-  const { schema, debug, lookupValue = null, jomqlPath = "/jomql" } = params;
+  const {
+    schema,
+    debug = false,
+    lookupValue = null,
+    jomqlPath = "/jomql",
+    customProcessor = false,
+  } = params;
 
   // jomqlPath must start with '/'
   if (!jomqlPath.match(/^\//)) {
@@ -43,10 +59,12 @@ export function initializeJomql(app: Express, params: Params) {
 
   exportedSchema = schema;
 
+  exportedCustomProcessor = customProcessor;
+
   //lookup value must be primitive. i.e. null, true, false, 1
   exportedLookupValue = lookupValue;
 
-  exportedDebug = !!debug;
+  exportedDebug = debug;
 
   app.post(jomqlPath, createJomqlRequestHandler(schema.rootResolvers));
 
@@ -73,6 +91,8 @@ export const getSchema = () => exportedSchema;
 
 export const getLookupValue = () => exportedLookupValue;
 
+export const getCustomProcessor = () => exportedCustomProcessor;
+
 export const getTypeDefs = () => exportedSchema.typeDefs;
 
 export const getInputDefs = () => exportedSchema.inputDefs;
@@ -86,4 +106,5 @@ export {
   processJomqlResolverTree,
   validateExternalArgs,
   validateResultFields,
+  generateAnonymousRootResolver,
 } from "./helpers/jomql";

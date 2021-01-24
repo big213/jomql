@@ -1,4 +1,4 @@
-import type { ScalarDefinition } from "../types";
+import type { ScalarDefinition } from "..";
 
 function validate(value: unknown) {
   if (typeof value !== "string") throw true;

@@ -1,5 +1,4 @@
-import type { ScalarDefinition } from "../types";
-
+import type { ScalarDefinition } from "..";
 export const unknown: ScalarDefinition = {
   name: "unknown",
   types: ["unknown"],

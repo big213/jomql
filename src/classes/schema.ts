@@ -6,6 +6,7 @@ import {
   isInputTypeDefinition,
   ArgDefinition,
 } from "..";
+import { isTypeDefinition } from "../types";
 
 function isNestedValue(
   ele: tsTypeFieldFinalValue | tsTypeFields
@@ -134,15 +135,32 @@ type Argize<T, Args> = Args extends undefined
 
     this.schema.rootResolvers.forEach((rootResolver, key) => {
       const rootObject: tsTypeFields = new Map();
-      const type = rootResolver.type;
+      let fieldType = rootResolver.type;
+
+      // if string, attempt to convert to TypeDefinition
+      if (typeof fieldType === "string") {
+        const typeDef = this.schema.typeDefs.get(fieldType);
+        if (!typeDef) {
+          throw new Error(`TypeDef '${fieldType}' not found`);
+        }
+        fieldType = typeDef;
+      }
+
       let typename;
-      if (isScalarDefinition(type)) {
+      if (isTypeDefinition(fieldType)) {
+        typename = capitalizeString(fieldType.name);
+
+        // if typename is not defined in the typeDocumentRoot, it is an unknown type. add it to the list and try to process later.
+        if (!this.typeDocumentRoot.has(typename)) {
+          this.deferredTypeFields.add(typename);
+        }
+      } else {
         // if it is a scalarDefinition, look up in scalar Definition table
 
         // if not exists, add it
-        if (!this.scalarTsTypeFields.has(type.name)) {
-          this.scalarTsTypeFields.set(type.name, {
-            value: type.types.join("|"),
+        if (!this.scalarTsTypeFields.has(fieldType.name)) {
+          this.scalarTsTypeFields.set(fieldType.name, {
+            value: fieldType.types.join("|"),
             isArray: !!rootResolver.isArray,
             isNullable: rootResolver.allowNull,
             isOptional: false,
@@ -150,14 +168,7 @@ type Argize<T, Args> = Args extends undefined
           });
         }
 
-        typename = `Scalars['${type.name}']`;
-      } else {
-        typename = capitalizeString(type);
-
-        // if typename is not defined in the typeDocumentRoot, it is an unknown type. add it to the list and try to process later.
-        if (!this.typeDocumentRoot.has(typename)) {
-          this.deferredTypeFields.add(typename);
-        }
+        typename = `Scalars['${fieldType.name}']`;
       }
 
       // parse the argDefinitions
@@ -199,34 +210,43 @@ type Argize<T, Args> = Args extends undefined
   processTypeDefinition(typeDef: TypeDefinition) {
     const mainTypeFields: tsTypeFields = new Map();
     Object.entries(typeDef.fields).forEach(([field, fieldDef]) => {
-      const type = fieldDef.type;
+      let fieldType = fieldDef.type;
       let typename;
+
+      // if string, attempt to convert to TypeDefinition
+      if (typeof fieldType === "string") {
+        const typeDef = this.schema.typeDefs.get(fieldType);
+        if (!typeDef) {
+          throw new Error(`TypeDef '${fieldType}' not found`);
+        }
+        fieldType = typeDef;
+      }
 
       // if field is hidden, set the typename to never
       if (fieldDef.hidden) {
         typename = "never";
-      } else if (isScalarDefinition(type)) {
-        // if it is a scalarDefinition, look up in scalar Definition table
-
-        // if not exists, add it
-        if (!this.scalarTsTypeFields.has(type.name)) {
-          this.scalarTsTypeFields.set(type.name, {
-            value: type.types.join("|"),
-            isArray: !!fieldDef.isArray,
-            isNullable: false,
-            isOptional: false,
-            description: type.description,
-          });
-        }
-
-        typename = `Scalars['${type.name}']`;
-      } else {
-        typename = capitalizeString(type);
+      } else if (isTypeDefinition(fieldType)) {
+        typename = capitalizeString(fieldType.name);
 
         // if typename is not defined in the typeDocumentRoot, it is an unknown type. add it to the list.
         if (!this.typeDocumentRoot.has(typename)) {
           this.deferredTypeFields.add(typename);
         }
+      } else {
+        // if it is a scalarDefinition, look up in scalar Definition table
+
+        // if not exists, add it
+        if (!this.scalarTsTypeFields.has(fieldType.name)) {
+          this.scalarTsTypeFields.set(fieldType.name, {
+            value: fieldType.types.join("|"),
+            isArray: !!fieldDef.isArray,
+            isNullable: false,
+            isOptional: false,
+            description: fieldType.description,
+          });
+        }
+
+        typename = `Scalars['${fieldType.name}']`;
       }
 
       mainTypeFields.set(field, {

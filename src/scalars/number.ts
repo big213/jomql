@@ -1,4 +1,4 @@
-import type { ScalarDefinition } from "../types";
+import type { ScalarDefinition } from "..";
 
 function validate(value: unknown) {
   const parsedValue = Number(value);
