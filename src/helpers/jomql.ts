@@ -31,39 +31,6 @@ export function isObject(ele: unknown): ele is stringKeyObject {
   return Object.prototype.toString.call(ele) === "[object Object]";
 }
 
-/* export function validateRootResolverQuery(
-  externalQuery: unknown,
-  rootResolverObject: RootResolverObject,
-  fieldPath: string[]
-) {
-  // query must be object
-  if (!isObject(externalQuery)) {
-    throw new JomqlQueryError({
-      message: "Object expected at root query",
-      fieldPath,
-    });
-  }
-
-  // get the typeDef -- if it is string
-  const type = rootResolverObject.type;
-  if (typeof type !== "string")
-    throw new JomqlQueryError({
-      message: "Root Resolver cannot have Scalar type",
-      fieldPath,
-    });
-
-  const typeDef = getTypeDefs().get(type);
-
-  // validate args
-  validateExternalArgs(
-    externalQuery.__args,
-    rootResolverObject.args,
-    fieldPath.concat("__args")
-  );
-
-  return generateJomqlResolverTree(externalQuery, typeDef, type, fieldPath);
-} */
-
 // validates and replaces the args in place
 export function validateExternalArgs(
   args: JomqlQueryArgs | undefined,
@@ -491,9 +458,9 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
         data,
       });
     }
-  } else if (nested) {
+  } else if (nested && isObject(jomqlResultsNode)) {
     // must be nested field.
-    returnValue = parentNode ?? {};
+    returnValue = jomqlResultsNode;
 
     for (const field in jomqlResolverNode.nested) {
       const currentFieldPath = fieldPath.concat(field);

@@ -13,7 +13,7 @@ export {
 export { TsSchemaGenerator } from "./classes/schema";
 import { JomqlInitializationError } from "./classes";
 
-import type { Params, Schema, JomqlProcessorFunction } from "./types";
+import type { Params, Schema } from "./types";
 export {
   RootResolverMap,
   RootResolverObject,

@@ -215,11 +215,11 @@ type Argize<T, Args> = Args extends undefined
 
       // if string, attempt to convert to TypeDefinition
       if (typeof fieldType === "string") {
-        const typeDef = this.schema.typeDefs.get(fieldType);
-        if (!typeDef) {
+        const lookupTypeDef = this.schema.typeDefs.get(fieldType);
+        if (!lookupTypeDef) {
           throw new Error(`TypeDef '${fieldType}' not found`);
         }
-        fieldType = typeDef;
+        fieldType = lookupTypeDef;
       }
 
       // if field is hidden, set the typename to never
