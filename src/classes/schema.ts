@@ -245,7 +245,6 @@ type Queryize<T> = T extends Field<infer Type, infer Args>
     argDefinition: JomqlInputFieldType | undefined
   ): tsTypeFieldFinalValue {
     let inputDefName;
-    let inputDefDescription;
     if (argDefinition) {
       let argDefType = argDefinition.definition.type;
 
