@@ -95,8 +95,6 @@ type Queryize<T> = T extends Field<infer Type, infer Args>
     description: "All Input types",
   };
 
-  constructor() {}
-
   buildSchema() {
     // all scalars
     scalarTypeDefs.forEach((fieldDef, key) => {
