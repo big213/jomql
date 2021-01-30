@@ -3,47 +3,65 @@ import {
   createJomqlRequestHandler,
   createRestRequestHandler,
 } from "./helpers/router";
+
+import {
+  JomqlInitializationError,
+  JomqlObjectType,
+  JomqlRootResolverType,
+  JomqlInputType,
+  JomqlScalarType,
+} from "./classes";
+
+import type { Params } from "./types";
+
+export { TsSchemaGenerator } from "./classes/schema";
+
 export {
   JomqlArgsError,
   JomqlBaseError,
   JomqlQueryError,
   JomqlResultError,
   JomqlInitializationError,
+  JomqlObjectType,
+  JomqlInputType,
+  JomqlRootResolverType,
+  JomqlScalarType,
+  JomqlInputTypeLookup,
+  JomqlObjectTypeLookup,
+  JomqlInputFieldType,
 } from "./classes";
-export { TsSchemaGenerator } from "./classes/schema";
-import { JomqlInitializationError } from "./classes";
 
-import type { Params, Schema } from "./types";
 export {
-  RootResolverMap,
-  RootResolverObject,
-  Schema,
-  TypeDefinition,
-  ArgDefinition,
+  RootResolverDefinition,
+  ObjectTypeDefinition,
+  InputFieldDefinition,
   InputTypeDefinition,
   ScalarDefinition,
   JomqlResolverNode,
-  isScalarDefinition,
-  isInputTypeDefinition,
   JsType,
   ResolverFunction,
   RootResolverFunction,
   JomqlQuery,
   JomqlQueryArgs,
-  TypeDefinitionField,
+  ObjectTypeDefinitionField,
+  isRootResolverDefinition,
 } from "./types";
 
-let exportedSchema: Schema,
-  exportedLookupValue: any,
+let exportedLookupValue: any,
   exportedDebug: boolean,
   exportedCustomProcessor: boolean;
 
 // set a symbol for lookups
 export const lookupSymbol = Symbol("lookup");
 
+export const objectTypeDefs: Map<string, JomqlObjectType> = new Map();
+export const inputTypeDefs: Map<string, JomqlInputType> = new Map();
+export const scalarTypeDefs: Map<string, JomqlScalarType> = new Map();
+
+export const rootResolvers: Map<string, JomqlRootResolverType> = new Map();
+
 export function initializeJomql(app: Express, params: Params) {
   const {
-    schema,
     debug = false,
     lookupValue = null,
     jomqlPath = "/jomql",
@@ -57,8 +75,6 @@ export function initializeJomql(app: Express, params: Params) {
     });
   }
 
-  exportedSchema = schema;
-
   exportedCustomProcessor = customProcessor;
 
   //lookup value must be primitive. i.e. null, true, false, 1
@@ -66,16 +82,19 @@ export function initializeJomql(app: Express, params: Params) {
 
   exportedDebug = debug;
 
-  app.post(jomqlPath, createJomqlRequestHandler(schema.rootResolvers));
+  app.post(jomqlPath, createJomqlRequestHandler());
 
   // populate all RESTful routes. This should only be done on cold starts.
-  schema.rootResolvers.forEach((item, key) => {
-    if (item.route === jomqlPath)
+  rootResolvers.forEach((item, key) => {
+    if (item.definition.route === jomqlPath)
       throw new JomqlInitializationError({
         message: `Duplicate route for jomql path: '${jomqlPath}'`,
       });
 
-    app[item.method](item.route, createRestRequestHandler(item, key));
+    app[item.definition.method](
+      item.definition.route,
+      createRestRequestHandler(item.definition, key)
+    );
   });
 
   app.set("json replacer", function (key: string, value: any) {
@@ -87,15 +106,9 @@ export function initializeJomql(app: Express, params: Params) {
   });
 }
 
-export const getSchema = () => exportedSchema;
-
 export const getLookupValue = () => exportedLookupValue;
 
 export const getCustomProcessor = () => exportedCustomProcessor;
-
-export const getTypeDefs = () => exportedSchema.typeDefs;
-
-export const getInputDefs = () => exportedSchema.inputDefs;
 
 export const isDebug = () => exportedDebug;
 

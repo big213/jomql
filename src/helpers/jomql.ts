@@ -1,28 +1,29 @@
 import {
   getLookupValue,
-  getTypeDefs,
-  getInputDefs,
+  objectTypeDefs,
+  inputTypeDefs,
   lookupSymbol,
-  BaseScalars,
 } from "..";
-import { JomqlArgsError, JomqlQueryError, JomqlResultError } from "../classes";
+import {
+  JomqlArgsError,
+  JomqlInputType,
+  JomqlQueryError,
+  JomqlResultError,
+  JomqlObjectType,
+  JomqlScalarType,
+  JomqlInputTypeLookup,
+  JomqlObjectTypeLookup,
+  JomqlInputFieldType,
+} from "../classes";
 
 import {
-  TypeDefinition,
   JomqlResolverNode,
-  JomqlQuery,
   JomqlQueryArgs,
-  JomqlResultsNode,
-  isScalarDefinition,
   ResolverObject,
-  isInputTypeDefinition,
-  ArgDefinition,
-  RootResolverObject,
+  RootResolverDefinition,
   JomqlProcessorFunction,
-  TypeDefinitionField,
-  isTypeDefinitionField,
-  ScalarDefinition,
-  isTypeDefinition,
+  ObjectTypeDefinitionField,
+  isRootResolverDefinition,
 } from "../types";
 
 type stringKeyObject = { [x: string]: any };
@@ -34,7 +35,7 @@ export function isObject(ele: unknown): ele is stringKeyObject {
 // validates and replaces the args in place
 export function validateExternalArgs(
   args: JomqlQueryArgs | undefined,
-  argDefinition: ArgDefinition | undefined,
+  argDefinition: JomqlInputFieldType | undefined,
   fieldPath: string[]
 ) {
   let parsedArgs;
@@ -50,27 +51,27 @@ export function validateExternalArgs(
   }
 
   // if no arg required and args is undefined, return
-  if (!argDefinition.required && args === undefined) return;
+  if (!argDefinition.definition.required && args === undefined) return;
 
   // if argDefinition.required and args is undefined, throw err
-  if (argDefinition.required && args === undefined)
+  if (argDefinition.definition.required && args === undefined)
     throw new JomqlArgsError({
       message: `Args is required`,
       fieldPath,
     });
 
   // if argDefinition.isArray and args is not array, throw err
-  if (argDefinition.isArray && !Array.isArray(args))
+  if (argDefinition.definition.isArray && !Array.isArray(args))
     throw new JomqlArgsError({
       message: `Array expected`,
       fieldPath,
     });
 
-  let argDefType = argDefinition.type;
+  let argDefType = argDefinition.definition.type;
 
-  // if string, fetch the inputDef from the map
-  if (typeof argDefType === "string") {
-    const inputDef = getInputDefs().get(argDefType);
+  // // if lookup field, convert from map
+  if (argDefType instanceof JomqlInputTypeLookup) {
+    const inputDef = inputTypeDefs.get(argDefType.name);
     if (!inputDef)
       throw new JomqlArgsError({
         message: `Unknown inputDef '${argDefType}'`,
@@ -80,11 +81,11 @@ export function validateExternalArgs(
   }
 
   // if argDefinition.type is inputTypeDefinition
-  if (isInputTypeDefinition(argDefType)) {
+  if (argDefType instanceof JomqlInputType) {
     let argsArray: (JomqlQueryArgs | undefined)[];
-    const fields = argDefType.fields;
+    const fields = argDefType.definition.fields;
     // if args is array and it is supposed to be array, process each array element
-    if (Array.isArray(args) && argDefinition.isArray) {
+    if (Array.isArray(args) && argDefinition.definition.isArray) {
       argsArray = args;
     } else {
       argsArray = [args];
@@ -121,20 +122,20 @@ export function validateExternalArgs(
       }
 
       // perform validation on results
-      if (argDefType.inputsValidator) {
-        argDefType.inputsValidator(arg, fieldPath);
+      if (argDefType.definition.inputsValidator) {
+        argDefType.definition.inputsValidator(arg, fieldPath);
       }
     }
-  } else if (isScalarDefinition(argDefType)) {
+  } else {
     // if argDefinition.type is scalarDefinition, attempt to parseValue args
     // replace value if parseValue
-    const parseValue = argDefType.parseValue;
+    const parseValue = argDefType.definition.parseValue;
 
     // if arg is null, skip
     if (parseValue && args !== null) {
       try {
         // if arg is an array and supposed to be array, loop through
-        if (Array.isArray(args) && argDefinition.isArray) {
+        if (Array.isArray(args) && argDefinition.definition.isArray) {
           parsedArgs = args.map((ele: unknown) => parseValue(ele));
         } else {
           parsedArgs = parseValue(args);
@@ -142,13 +143,11 @@ export function validateExternalArgs(
       } catch {
         // transform any errors thrown into JomqlParseError
         throw new JomqlArgsError({
-          message: `Invalid scalar value for '${argDefType.name}'`,
+          message: `Invalid scalar value for '${argDefType.definition.name}'`,
           fieldPath: fieldPath,
         });
       }
     }
-  } else {
-    // must be string field, should never reach this case
   }
 
   /*
@@ -221,23 +220,27 @@ export async function validateJomqlResults(
     // if typeDef of field is ScalarDefinition, apply the serialize function to the end result
     let fieldType = jomqlResolverNode.typeDef.type;
 
-    if (typeof fieldType === "string") {
-      const typeDef = getTypeDefs().get(fieldType);
+    if (fieldType instanceof JomqlObjectTypeLookup) {
+      const typeDef = objectTypeDefs.get(fieldType.name);
       if (!typeDef) {
         throw new JomqlQueryError({
-          message: `TypeDef '${fieldType}' not found`,
+          message: `TypeDef '${fieldType.name}' not found`,
           fieldPath: fieldPath,
         });
       }
       fieldType = typeDef;
     }
 
-    if (isTypeDefinition(fieldType)) {
+    if (fieldType instanceof JomqlObjectType) {
       returnValue = jomqlResultsNode;
     } else {
-      const serializeFn = fieldType.serialize;
+      const serializeFn = fieldType.definition.serialize;
       // if field is null, skip
-      if (serializeFn && jomqlResultsNode !== null) {
+      if (
+        serializeFn &&
+        jomqlResultsNode !== null &&
+        jomqlResultsNode !== undefined
+      ) {
         try {
           if (
             Array.isArray(jomqlResultsNode) &&
@@ -252,7 +255,7 @@ export async function validateJomqlResults(
         } catch {
           // transform any errors thrown into JomqlParseError
           throw new JomqlResultError({
-            message: `Invalid scalar value for '${fieldType.name}'`,
+            message: `Invalid scalar value for '${fieldType.definition.name}'`,
             fieldPath: fieldPath,
           });
         }
@@ -302,9 +305,9 @@ export function validateResultNullish(
 
 // starts generateJomqlResolverTree from a TypeDef
 export function generateAnonymousRootResolver(
-  type: TypeDefinition | string | ScalarDefinition
-): TypeDefinitionField {
-  const anonymousRootResolver: TypeDefinitionField = {
+  type: JomqlObjectType | JomqlObjectTypeLookup | JomqlScalarType
+): ObjectTypeDefinitionField {
+  const anonymousRootResolver: ObjectTypeDefinitionField = {
     allowNull: true,
     type,
   };
@@ -314,22 +317,22 @@ export function generateAnonymousRootResolver(
 
 export function generateJomqlResolverTree(
   fieldValue: unknown,
-  resolverObject: TypeDefinitionField | RootResolverObject,
+  resolverObject: ObjectTypeDefinitionField | RootResolverDefinition,
   fieldPath: string[] = [],
   fullTree = false
 ): JomqlResolverNode {
   let fieldType = resolverObject.type;
 
   // if string, attempt to convert to TypeDefinition
-  if (typeof fieldType === "string") {
-    const typeDef = getTypeDefs().get(fieldType);
-    if (!typeDef) {
+  if (fieldType instanceof JomqlObjectTypeLookup) {
+    const typeDefLookup = objectTypeDefs.get(fieldType.name);
+    if (!typeDefLookup) {
       throw new JomqlQueryError({
-        message: `TypeDef '${fieldType}' not found`,
+        message: `TypeDef '${fieldType.name}' not found`,
         fieldPath: fieldPath,
       });
     }
-    fieldType = typeDef;
+    fieldType = typeDefLookup;
   }
 
   // define the lookupValue
@@ -340,7 +343,7 @@ export function generateJomqlResolverTree(
   const isLookupField =
     fieldValue === lookupValue || fieldValue === lookupSymbol;
 
-  const isLeafNode = !isTypeDefinition(fieldType);
+  const isLeafNode = !(fieldType instanceof JomqlObjectType);
 
   // field must either be lookupValue OR an object
   if (!isLookupField && !isObject(fieldValue))
@@ -351,11 +354,12 @@ export function generateJomqlResolverTree(
 
   // if leafNode and nested, MUST be only with __args
   if (isLeafNode && isObject(fieldValue)) {
-    if (!("__args" in fieldValue) || Object.keys(fieldValue).length !== 1)
+    if (!("__args" in fieldValue) || Object.keys(fieldValue).length !== 1) {
       throw new JomqlQueryError({
         message: `Scalar node can only accept __args and no other field`,
         fieldPath,
       });
+    }
   }
 
   // if not leafNode and isLookupField, deny
@@ -366,7 +370,11 @@ export function generateJomqlResolverTree(
     });
 
   // if field is scalar and args is required, and not object, throw err
-  if (isLeafNode && resolverObject.args?.required && !isObject(fieldValue)) {
+  if (
+    isLeafNode &&
+    resolverObject.args?.definition.required &&
+    !isObject(fieldValue)
+  ) {
     throw new JomqlQueryError({
       message: `Args required`,
       fieldPath,
@@ -388,7 +396,7 @@ export function generateJomqlResolverTree(
       fieldPath.concat("__args")
     );
 
-    if (!isLeafNode && isTypeDefinition(fieldType)) {
+    if (!isLeafNode && fieldType instanceof JomqlObjectType) {
       nestedNodes = {};
 
       // iterate over fields
@@ -399,7 +407,7 @@ export function generateJomqlResolverTree(
         }
 
         // if field not in TypeDef, reject
-        if (!(field in fieldType.fields)) {
+        if (!(field in fieldType.definition.fields)) {
           throw new JomqlQueryError({
             message: `Unknown field`,
             fieldPath: parentsPlusCurrentField,
@@ -407,7 +415,7 @@ export function generateJomqlResolverTree(
         }
 
         // deny hidden fields
-        if (fieldType.fields[field].hidden) {
+        if (fieldType.definition.fields[field].hidden) {
           throw new JomqlQueryError({
             message: `Hidden field`,
             fieldPath: parentsPlusCurrentField,
@@ -419,7 +427,7 @@ export function generateJomqlResolverTree(
         if (fullTree || !resolverObject.resolver)
           nestedNodes[field] = generateJomqlResolverTree(
             fieldValue[field],
-            fieldType.fields[field],
+            fieldType.definition.fields[field],
             parentsPlusCurrentField,
             fullTree
           );
@@ -444,9 +452,12 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
   fieldPath = [],
 }) => {
   let returnValue: any;
+
   const resolverFn = jomqlResolverNode.typeDef.resolver;
   const nested = jomqlResolverNode.nested;
-  if (resolverFn) {
+
+  // if typeDef is RootResolverDefinition, skip resolving (should already be done)
+  if (resolverFn && !isRootResolverDefinition(jomqlResolverNode.typeDef)) {
     if (!jomqlResolverNode.typeDef.defer) {
       returnValue = await resolverFn({
         req,
@@ -475,7 +486,9 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
         fieldPath: currentFieldPath,
       });
     }
+  } else {
+    returnValue = jomqlResultsNode;
   }
 
-  return returnValue ?? jomqlResultsNode;
+  return returnValue ?? null;
 };

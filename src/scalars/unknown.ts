@@ -1,6 +1,7 @@
-import type { ScalarDefinition } from "..";
-export const unknown: ScalarDefinition = {
+import { JomqlScalarType } from "../classes";
+
+export const unknown = new JomqlScalarType({
   name: "unknown",
   types: ["unknown"],
   description: "Unknown value",
-};
+});

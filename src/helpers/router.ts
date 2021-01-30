@@ -1,17 +1,21 @@
 import type { Request, Response } from "express";
 import { generateNormalResponse, generateErrorResponse } from "./response";
 import { JomqlBaseError, JomqlQueryError } from "../classes";
-import { isDebug, getCustomProcessor, lookupSymbol } from "..";
+import { isDebug, getCustomProcessor, lookupSymbol, rootResolvers } from "..";
 import {
   isObject,
   validateJomqlResults,
   processJomqlResolverTree,
   generateJomqlResolverTree,
 } from "./jomql";
-import type { RootResolverObject, JomqlQueryArgs, JomqlQuery } from "../types";
+import type {
+  RootResolverDefinition,
+  JomqlQueryArgs,
+  JomqlQuery,
+} from "../types";
 
 export function createRestRequestHandler(
-  rootResolverObject: RootResolverObject,
+  rootResolverObject: RootResolverDefinition,
   operationName: string
 ) {
   return async function (req: Request, res: Response) {
@@ -67,9 +71,7 @@ export function createRestRequestHandler(
   };
 }
 
-export function createJomqlRequestHandler(
-  allRootResolversMap: Map<string, RootResolverObject>
-) {
+export function createJomqlRequestHandler() {
   return async function (req: Request, res: Response) {
     try {
       // handle jomql queries, check if req.body is object
@@ -93,27 +95,28 @@ export function createJomqlRequestHandler(
       const query = req.body[operation];
       const fieldPath = [operation];
 
-      const rootResolverObject = allRootResolversMap.get(operation);
+      const rootResolver = rootResolvers.get(operation);
 
-      if (rootResolverObject) {
+      if (rootResolver) {
         // validate query in-place
         const jomqlResolverTree = generateJomqlResolverTree(
           query,
-          rootResolverObject,
+          rootResolver.definition,
           fieldPath,
           true
         );
 
         const { __args: jomqlArgs, ...jomqlQuery } = query;
 
-        let results = await rootResolverObject.resolver({
+        // executes the root level resolver only.
+        let results = await rootResolver.definition.resolver({
           req,
           fieldPath,
           args: jomqlArgs,
           query: jomqlQuery,
         });
 
-        // processes the resolvers if not using a custom processor
+        // processes the remaining resolvers if not using a custom processor
         if (!getCustomProcessor())
           results = await processJomqlResolverTree({
             jomqlResultsNode: results,

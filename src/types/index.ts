@@ -1,9 +1,17 @@
 import type { Request } from "express";
+import {
+  JomqlInputType,
+  JomqlScalarType,
+  JomqlObjectType,
+  JomqlInputTypeLookup,
+  JomqlObjectTypeLookup,
+  JomqlInputFieldType,
+} from "../classes";
 
 // extendable by user
 declare global {
   namespace Jomql {
-    interface TypeDefinitionField {}
+    interface ObjectTypeDefinitionField {}
   }
 }
 
@@ -29,7 +37,6 @@ export interface JomqlError {
 }
 
 export interface Params {
-  readonly schema: Schema;
   readonly debug?: boolean;
   readonly lookupValue?: string | boolean | number;
   readonly jomqlPath?: string;
@@ -49,48 +56,48 @@ export type JomqlProcessorFunctionInputs = {
   fieldPath: string[];
 };
 
-export interface ArgDefinition {
-  type: ScalarDefinition | InputTypeDefinition | string;
+export interface InputFieldDefinition {
+  type: JomqlScalarType | JomqlInputType | JomqlInputTypeLookup;
   required?: boolean;
   isArray?: boolean;
 }
 
 export interface InputTypeDefinition {
-  name?: string;
+  name: string;
+  description?: string;
   fields: {
-    [x: string]: ArgDefinition;
+    [x: string]: JomqlInputFieldType;
   };
   inputsValidator?: (args: any, fieldPath: string[]) => void;
 }
 
-export interface TypeDefinition {
+export interface ObjectTypeDefinition {
   name: string;
   description?: string;
   fields: {
-    [x: string]: TypeDefinitionField;
+    [x: string]: ObjectTypeDefinitionField;
   } & { __args?: never };
 }
 
 export interface ResolverObject {
-  type: string | ScalarDefinition | TypeDefinition;
+  type: JomqlObjectTypeLookup | JomqlScalarType | JomqlObjectType;
   isArray?: boolean;
   allowNull: boolean;
-  args?: ArgDefinition;
+  args?: JomqlInputFieldType;
   description?: string;
 }
 
-export interface RootResolverObject extends ResolverObject {
+export interface RootResolverDefinition extends ResolverObject {
+  name: string;
   method: ValidMethod;
   route: string;
   query?: JomqlQuery;
   resolver: RootResolverFunction;
 }
 
-export type RootResolverMap = Map<string, RootResolverObject>;
-
-export interface TypeDefinitionField
+export interface ObjectTypeDefinitionField
   extends ResolverObject,
-    Jomql.TypeDefinitionField {
+    Jomql.ObjectTypeDefinitionField {
   resolver?: ResolverFunction;
   defer?: boolean;
   required?: boolean;
@@ -101,15 +108,6 @@ export interface TypeDefinitionField
 }
 
 export type JsType = "string" | "number" | "boolean" | "unknown";
-
-export interface Schema {
-  rootResolvers: RootResolverMap;
-  typeDefs: Map<string, TypeDefinition>;
-  inputDefs: Map<string, InputTypeDefinition>;
-  scalars: {
-    [x: string]: ScalarDefinition;
-  };
-}
 
 export interface ScalarDefinition {
   name: string;
@@ -135,7 +133,6 @@ export interface ResolverFunctionInput {
   fieldPath: string[];
   args: any;
   query: JomqlQuery | undefined;
-  // typename: string;
   parentValue: any;
   fieldValue: any;
   data?: any;
@@ -144,10 +141,9 @@ export interface ResolverFunctionInput {
 export type ResolverFunction = (input: ResolverFunctionInput) => any;
 
 export interface JomqlResolverNode {
-  typeDef: TypeDefinitionField;
+  typeDef: ObjectTypeDefinitionField | RootResolverDefinition;
   query?: JomqlQuery;
   args?: JomqlQueryArgs;
-  // typename: string;
   nested?: {
     [x: string]: JomqlResolverNode;
   };
@@ -166,26 +162,8 @@ export type JomqlResultsNode = null | {
   [x: string]: JomqlResultsNode | any;
 };
 
-export function isScalarDefinition(
-  ele: string | ScalarDefinition
-): ele is ScalarDefinition {
-  return typeof ele !== "string";
-}
-
-export function isTypeDefinition(
-  ele: ScalarDefinition | TypeDefinition
-): ele is TypeDefinition {
-  return "fields" in ele;
-}
-
-export function isTypeDefinitionField(
-  ele: TypeDefinitionField | RootResolverObject
-): ele is TypeDefinitionField {
-  return !("method" in ele);
-}
-
-export function isInputTypeDefinition(
-  ele: InputTypeDefinition | ScalarDefinition | string
-): ele is InputTypeDefinition {
-  return typeof ele !== "string" && !("types" in ele);
+export function isRootResolverDefinition(
+  ele: RootResolverDefinition | ObjectTypeDefinitionField
+): ele is RootResolverDefinition {
+  return "method" in ele;
 }

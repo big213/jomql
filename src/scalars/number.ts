@@ -1,4 +1,4 @@
-import type { ScalarDefinition } from "..";
+import { JomqlScalarType } from "../classes";
 
 function validate(value: unknown) {
   const parsedValue = Number(value);
@@ -7,10 +7,10 @@ function validate(value: unknown) {
   return parsedValue;
 }
 
-export const number: ScalarDefinition = {
+export const number = new JomqlScalarType({
   name: "number",
   types: ["number"],
   description: "Numerical value",
   serialize: validate,
   parseValue: validate,
-};
+});

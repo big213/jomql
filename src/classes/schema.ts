@@ -1,20 +1,24 @@
 import {
-  Schema,
-  isScalarDefinition,
-  RootResolverObject,
-  TypeDefinition,
-  isInputTypeDefinition,
-  ArgDefinition,
+  objectTypeDefs,
+  rootResolvers,
+  scalarTypeDefs,
+  inputTypeDefs,
 } from "..";
-import { isTypeDefinition } from "../types";
+import { JomqlObjectType, JomqlScalarType, JomqlInputType } from "../classes";
+import { JomqlInputFieldType } from "./jomqlInputFieldType";
+import { JomqlInputTypeLookup } from "./jomqlInputTypeLookup";
+import { JomqlObjectTypeLookup } from "./jomqlObjectTypeLookup";
 
 function isNestedValue(
   ele: tsTypeFieldFinalValue | tsTypeFields
 ): ele is tsTypeFields {
-  return ele instanceof Map;
+  return ele.value instanceof Map;
 }
 
-type tsTypeFields = Map<string, tsTypeFieldFinalValue | tsTypeFields>;
+type tsTypeFields = {
+  value: Map<string, tsTypeFieldFinalValue | tsTypeFields>;
+  description?: string;
+};
 
 type tsTypeFieldFinalValue = {
   value: string;
@@ -24,13 +28,7 @@ type tsTypeFieldFinalValue = {
   description?: string;
 };
 
-type tsRootType = {
-  value: tsTypeFields | tsTypeFieldFinalValue;
-  description?: string;
-};
-
 export class TsSchemaGenerator {
-  schema: Schema;
   scaffoldStr: string = `// Query builder
 const queryResult = executeJomql({
   // Start typing here to get hints
@@ -45,179 +43,165 @@ export function executeJomql<Key extends keyof Root>(
 }
 
 // scaffolding
-export type GetQuery<K extends keyof Root> = Record<
-  K,
-  Argize<Queryize<Root[K]["Type"]>, Root[K]["Args"]>
->;
+export type GetQuery<K extends keyof Root> = K extends never
+  ? Partial<Record<K, Queryize<Root[keyof Root]>>>
+  : Record<K, Queryize<Root[K]>>;
 
-export type GetResponse<K extends keyof Root> = Omit<Root[K]["Type"], args>;
+export type GetResponse<K extends keyof Root> = Responseize<Root[K]>;
 
 type Primitive = string | number | boolean | undefined | null;
 
-type args = "__args";
+type Field<T, K> = {
+  Type: T;
+  Args: K;
+};
 
-type ElementType<T extends any[]> = T[number];
+type Responseize<T> = T extends Field<infer Type, infer Args>
+  ? Type extends never
+    ? never
+    : Type extends (infer U)[]
+    ? { [P in keyof U]: Responseize<U[P]> }[]
+    : { [P in keyof Type]: Responseize<Type[P]> }
+  : never;
 
-type Queryize<T> = T extends never
-  ? never
-  : T extends Primitive
-  ? true
-  : T extends any[]
-  ? Queryize<ElementType<T>>
-  : args extends keyof T
-  ? {
-      [P in keyof T as Exclude<P, args>]?: Queryize<T[P]>;
-    } &
-      (undefined extends T[args] ? { __args?: T[args] } : { __args: T[args] })
-  : {
-      [P in keyof T]?: Queryize<T[P]>;
-    };
+type Queryize<T> = T extends Field<infer Type, infer Args>
+  ? Type extends never
+    ? never
+    : Type extends Primitive
+    ? Args extends undefined // Args is undefined
+      ? true
+      : Args extends [infer Arg]
+      ? true | { __args: Arg } // Args is a tuple
+      : { __args: Args }
+    : Type extends (infer U)[]
+    ? Queryize<Field<U, Args>>
+    : Args extends undefined // Args is undefined
+    ? { [P in keyof Type]?: Queryize<Type[P]> }
+    : Args extends [infer Arg]
+    ? { [P in keyof Type]?: Queryize<Type[P]> } & {
+        __args?: Arg;
+      }
+    : { [P in keyof Type]?: Queryize<Type[P]> } & { __args: Args }
+  : never;\n\n`;
+  typeDocumentRoot: tsTypeFields = {
+    value: new Map(),
+  };
+  scalarTsTypeFields: tsTypeFields = {
+    value: new Map(),
+    description: "All Scalar values",
+  };
+  inputTypeTsTypeFields: tsTypeFields = {
+    value: new Map(),
+    description: "All Input types",
+  };
 
-type Argize<T, Args> = Args extends undefined
-  ? Omit<T, args>
-  : Omit<T, args> & { __args: Args };\n\n`;
-  typeDocumentRoot: Map<string, tsRootType> = new Map();
-  scalarTsTypeFields: tsTypeFields = new Map();
-  inputTypeTsTypeFields: tsTypeFields = new Map();
-  deferredTypeFields: Set<string> = new Set();
-
-  constructor(schema: Schema) {
-    this.schema = schema;
-  }
+  constructor() {}
 
   buildSchema() {
     // all scalars
-    Object.entries(this.schema.scalars).forEach(([field, fieldDef]) => {
-      if (isScalarDefinition(fieldDef)) {
-        this.scalarTsTypeFields.set(fieldDef.name, {
-          value: fieldDef.types.join("|"),
+    scalarTypeDefs.forEach((fieldDef, key) => {
+      if (fieldDef instanceof JomqlScalarType) {
+        this.scalarTsTypeFields.value.set(fieldDef.definition.name, {
+          value: fieldDef.definition.types.join("|"),
           isArray: false,
           isNullable: false,
           isOptional: false,
-          description: fieldDef.description,
+          description: fieldDef.definition.description,
         });
       }
     });
 
-    this.typeDocumentRoot.set("Scalars", {
-      value: this.scalarTsTypeFields,
-      description: "All scalar values",
-    });
+    this.typeDocumentRoot.value.set("Scalars", this.scalarTsTypeFields);
 
-    this.typeDocumentRoot.set("InputType", {
-      value: this.inputTypeTsTypeFields,
-      description: "All input types",
-    });
+    this.typeDocumentRoot.value.set("InputType", this.inputTypeTsTypeFields);
 
     // add main types
-    this.schema.typeDefs.forEach((typeDef, typeDefKey) => {
+    objectTypeDefs.forEach((typeDef, typeDefKey) => {
       const capitalizedTypeDefKey = capitalizeString(typeDefKey);
       const mainTypeFields = this.processTypeDefinition(typeDef);
 
-      this.typeDocumentRoot.set(capitalizedTypeDefKey, {
-        value: mainTypeFields,
-        description: typeDef.description,
-      });
-
-      // check if this type was on any deferred lists. if so, remove.
-      if (this.deferredTypeFields.has(capitalizedTypeDefKey)) {
-        this.deferredTypeFields.delete(capitalizedTypeDefKey);
-      }
+      this.typeDocumentRoot.value.set(capitalizedTypeDefKey, mainTypeFields);
     });
 
     // add root resolvers -- must be added AFTER types
-    const rootTypeFields: tsTypeFields = new Map();
+    const rootTypeFields: tsTypeFields = {
+      value: new Map(),
+      description: "All Root resolvers",
+    };
 
-    this.typeDocumentRoot.set("Root", {
-      value: rootTypeFields,
-      description: "Root type",
-    });
+    this.typeDocumentRoot.value.set("Root", rootTypeFields);
 
-    this.schema.rootResolvers.forEach((rootResolver, key) => {
-      const rootObject: tsTypeFields = new Map();
-      let fieldType = rootResolver.type;
+    rootResolvers.forEach((rootResolver, key) => {
+      const rootObject: tsTypeFields = {
+        value: new Map(),
+        description: rootResolver.definition.description,
+      };
+      let fieldType = rootResolver.definition.type;
 
       // if string, attempt to convert to TypeDefinition
-      if (typeof fieldType === "string") {
-        const typeDef = this.schema.typeDefs.get(fieldType);
+      if (fieldType instanceof JomqlObjectTypeLookup) {
+        const typeDef = objectTypeDefs.get(fieldType.name);
         if (!typeDef) {
-          throw new Error(`TypeDef '${fieldType}' not found`);
+          throw new Error(`TypeDef '${fieldType.name}' not found`);
         }
         fieldType = typeDef;
       }
 
       let typename;
-      if (isTypeDefinition(fieldType)) {
-        typename = capitalizeString(fieldType.name);
-
-        // if typename is not defined in the typeDocumentRoot, it is an unknown type. add it to the list and try to process later.
-        if (!this.typeDocumentRoot.has(typename)) {
-          this.deferredTypeFields.add(typename);
-        }
+      if (fieldType instanceof JomqlObjectType) {
+        typename = capitalizeString(fieldType.definition.name);
       } else {
         // if it is a scalarDefinition, look up in scalar Definition table
 
-        // if not exists, add it
-        if (!this.scalarTsTypeFields.has(fieldType.name)) {
-          this.scalarTsTypeFields.set(fieldType.name, {
-            value: fieldType.types.join("|"),
-            isArray: !!rootResolver.isArray,
-            isNullable: rootResolver.allowNull,
-            isOptional: false,
-            description: rootResolver.description,
-          });
-        }
-
-        typename = `Scalars['${fieldType.name}']`;
+        typename = `Scalars['${fieldType.definition.name}']`;
       }
 
       // parse the argDefinitions
-      const argReference = this.processArgDefinition(rootResolver.args, key);
+      const argReference = this.processInputFieldDefinition(
+        rootResolver.definition.args
+      );
 
-      rootObject.set("Type", {
+      // add it as a tuple if it is not required
+      if (
+        rootResolver.definition.args &&
+        !rootResolver.definition.args.definition.required
+      )
+        argReference.value = `[${argReference.value}]`;
+      argReference.isOptional = false;
+
+      rootObject.value.set("Type", {
         value: typename,
-        isArray: false,
-        isNullable: false,
+        isArray: !!rootResolver.definition.isArray,
+        isNullable: rootResolver.definition.allowNull,
         isOptional: false,
       });
 
-      rootObject.set("Args", argReference);
+      rootObject.value.set("Args", argReference);
 
-      rootTypeFields.set(key, rootObject);
+      rootTypeFields.value.set(key, rootObject);
     });
-
-    // process deferred fields
-    // no longer should be any
-    /*
-    this.deferredTypeFields.forEach((ele) => {
-      let fieldAdded = false;
-
-      if (fieldAdded) {
-        this.deferredTypeFields.delete(ele);
-      }
-    });
-    */
-
-    // if any deferred fields left, give a warning
-    if (this.deferredTypeFields.size > 0) {
-      console.log(
-        "Warning: the schema file might not be complete due to some missing types"
-      );
-      console.log(this.deferredTypeFields);
-    }
   }
 
-  processTypeDefinition(typeDef: TypeDefinition) {
-    const mainTypeFields: tsTypeFields = new Map();
-    Object.entries(typeDef.fields).forEach(([field, fieldDef]) => {
+  processTypeDefinition(typeDef: JomqlObjectType) {
+    const mainTypeFields: tsTypeFields = {
+      value: new Map(),
+      description: typeDef.definition.description,
+    };
+    Object.entries(typeDef.definition.fields).forEach(([field, fieldDef]) => {
+      const rootObject: tsTypeFields = {
+        value: new Map(),
+        description: fieldDef.description,
+      };
+
       let fieldType = fieldDef.type;
       let typename;
+      let args;
 
       // if string, attempt to convert to TypeDefinition
-      if (typeof fieldType === "string") {
-        const lookupTypeDef = this.schema.typeDefs.get(fieldType);
+      if (fieldType instanceof JomqlObjectTypeLookup) {
+        const lookupTypeDef = objectTypeDefs.get(fieldType.name);
         if (!lookupTypeDef) {
-          throw new Error(`TypeDef '${fieldType}' not found`);
+          throw new Error(`TypeDef '${fieldType.name}' not found`);
         }
         fieldType = lookupTypeDef;
       }
@@ -225,148 +209,127 @@ type Argize<T, Args> = Args extends undefined
       // if field is hidden, set the typename to never
       if (fieldDef.hidden) {
         typename = "never";
-      } else if (isTypeDefinition(fieldType)) {
-        typename = capitalizeString(fieldType.name);
-
-        // if typename is not defined in the typeDocumentRoot, it is an unknown type. add it to the list.
-        if (!this.typeDocumentRoot.has(typename)) {
-          this.deferredTypeFields.add(typename);
-        }
+        args = "undefined";
+      } else if (fieldType instanceof JomqlObjectType) {
+        typename = capitalizeString(fieldType.definition.name);
       } else {
         // if it is a scalarDefinition, look up in scalar Definition table
 
-        // if not exists, add it
-        if (!this.scalarTsTypeFields.has(fieldType.name)) {
-          this.scalarTsTypeFields.set(fieldType.name, {
-            value: fieldType.types.join("|"),
-            isArray: !!fieldDef.isArray,
-            isNullable: false,
-            isOptional: false,
-            description: fieldType.description,
-          });
-        }
-
-        typename = `Scalars['${fieldType.name}']`;
+        typename = `Scalars['${fieldType.definition.name}']`;
       }
 
-      mainTypeFields.set(field, {
+      args = this.processInputFieldDefinition(fieldDef.args);
+      // add it as a tuple if it is not required
+      if (fieldDef.args && !fieldDef.args.definition.required)
+        args.value = `[${args.value}]`;
+
+      args.isOptional = false;
+
+      rootObject.value.set("Type", {
         value: typename,
         isArray: !!fieldDef.isArray,
         isNullable: fieldDef.allowNull,
         isOptional: false,
-        description: fieldDef.description,
+        description: undefined,
       });
+
+      rootObject.value.set("Args", args);
+
+      mainTypeFields.value.set(field, rootObject);
     });
 
     return mainTypeFields;
   }
 
-  processArgDefinition(
-    argDefinition: ArgDefinition | undefined,
-    rootResolverName?: string
+  processInputFieldDefinition(
+    argDefinition: JomqlInputFieldType | undefined
   ): tsTypeFieldFinalValue {
     let inputDefName;
+    let inputDefDescription;
     if (argDefinition) {
-      const argDefType = argDefinition.type;
+      let argDefType = argDefinition.definition.type;
 
-      const inputTypeTypeFields: tsTypeFields = new Map();
-      if (isInputTypeDefinition(argDefType)) {
-        Object.entries(argDefType.fields).forEach(([key, argDef]) => {
-          const finalValue = this.processArgDefinition(argDef);
-          inputTypeTypeFields.set(key, finalValue);
-        });
-        const argDefName = argDefType.name ?? rootResolverName;
+      const inputTypeTypeFields: tsTypeFields = {
+        value: new Map(),
+      };
+
+      // is lookup field? convert
+      if (argDefType instanceof JomqlInputTypeLookup) {
+        const lookupInputType = inputTypeDefs.get(argDefType.name);
+
+        if (!lookupInputType)
+          throw new Error(
+            `Deferred InputType lookup failed: '${argDefType.name}'`
+          );
+
+        argDefType = lookupInputType;
+      }
+
+      if (argDefType instanceof JomqlInputType) {
+        Object.entries(argDefType.definition.fields).forEach(
+          ([key, argDef]) => {
+            const finalValue = this.processInputFieldDefinition(argDef);
+            inputTypeTypeFields.value.set(key, finalValue);
+          }
+        );
+        const argDefName = argDefType.definition.name;
 
         if (!argDefName) throw new Error("At least 1 ArgDef is missing name");
 
         // add to type InputType if not exists
-        if (!this.inputTypeTsTypeFields.has(argDefName)) {
-          this.inputTypeTsTypeFields.set(argDefName, inputTypeTypeFields);
+        if (!this.inputTypeTsTypeFields.value.has(argDefName)) {
+          this.inputTypeTsTypeFields.value.set(argDefName, inputTypeTypeFields);
         }
 
         // update the argTypename
         inputDefName = `InputType['${argDefName}']`;
-      } else if (isScalarDefinition(argDefType)) {
-        // if it is a scalarDefinition, look up in input Definition table
-
-        // if not exists, add it
-        if (!this.scalarTsTypeFields.has(argDefType.name)) {
-          this.scalarTsTypeFields.set(argDefType.name, {
-            value: argDefType.types.join("|"),
-            isArray: false,
-            isNullable: false,
-            isOptional: false,
-            description: argDefType.description,
-          });
-        }
-
-        inputDefName = `Scalars['${argDefType.name}']`;
+        inputTypeTypeFields.description = argDefType.definition.description;
       } else {
-        // string field, must refer to an InputType
-        inputDefName = `InputType['${argDefType}']`;
-      }
-
-      // if argName is a getX rootResolver and X is a known type, add as arg field on type X
-      if (rootResolverName) {
-        const keyParts = rootResolverName.split(/^get/);
-        if (
-          keyParts[0] === "" &&
-          this.schema.typeDefs.has(lowercaseString(keyParts[1]))
-        ) {
-          const tsTypeField = this.typeDocumentRoot.get(keyParts[1]);
-          if (tsTypeField && isNestedValue(tsTypeField.value)) {
-            tsTypeField.value.set("__args", {
-              value: `Root["${rootResolverName}"]["Args"]`,
-              isArray: false,
-              isNullable: false,
-              isOptional: false,
-              description: `Args for ${keyParts[1]}`,
-            });
-          }
-        }
+        // if it is a scalarDefinition, look up in input Definition table
+        inputDefName = `Scalars['${argDefType.definition.name}']`;
       }
     }
 
     return {
       value: inputDefName ?? "undefined",
-      isArray: argDefinition?.isArray ?? false,
+      isArray: argDefinition?.definition.isArray ?? false,
       isNullable: false,
-      isOptional: !argDefinition?.required ?? false,
-      description: undefined,
+      isOptional: !argDefinition?.definition.required ?? false,
+      description: undefined, // inputFieldType has no description
     };
   }
 
-  outputSchema(htmlMode = false) {
+  outputSchema() {
     // build final TS document
     let typesStr: string = "";
 
-    this.typeDocumentRoot.forEach((tsRootTypeValue, typename) => {
+    this.typeDocumentRoot.value.forEach((tsRootTypeValue, typename) => {
       // has description? if so, add jsdoc
       if (tsRootTypeValue.description)
         typesStr += `/**${tsRootTypeValue.description}*/`;
       typesStr +=
         `export type ${typename}=` +
-        (isNestedValue(tsRootTypeValue.value)
-          ? this.buildTsDocument(tsRootTypeValue.value)
+        (isNestedValue(tsRootTypeValue)
+          ? this.buildTsDocument(tsRootTypeValue)
           : `(${
-              (tsRootTypeValue.value.value === ""
+              (tsRootTypeValue.value === ""
                 ? "undefined"
-                : tsRootTypeValue.value.value) +
-              (tsRootTypeValue.value.isNullable ? "|null" : "") +
+                : tsRootTypeValue.value) +
+              (tsRootTypeValue.isNullable ? "|null" : "") +
               ")" +
-              (tsRootTypeValue.value.isArray ? "[]" : "")
+              (tsRootTypeValue.isArray ? "[]" : "")
             }`) +
         `\n`;
     });
 
-    const finalStr = this.scaffoldStr + typesStr;
-    return htmlMode ? `<pre>${finalStr}</pre>` : finalStr;
+    return this.scaffoldStr + typesStr;
   }
 
   buildTsDocument(tsTypeField: tsTypeFields) {
     let str = "{";
-    tsTypeField.forEach((value, key) => {
+    tsTypeField.value.forEach((value, key) => {
       if (isNestedValue(value)) {
+        if (value.description) str += `/**${value.description}*/`;
         // nested tsTypeField
         str += `"${key}":${this.buildTsDocument(value)};`;
       } else {
@@ -388,14 +351,4 @@ type Argize<T, Args> = Args extends undefined
 
 function capitalizeString(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function lowercaseString(str: string) {
-  return str.charAt(0).toLowerCase() + str.slice(1);
-}
-
-function sanitizeType(val: any) {
-  if (Array.isArray(val))
-    return JSON.stringify(val.map((ele) => capitalizeString(ele)));
-  else return capitalizeString(val);
 }

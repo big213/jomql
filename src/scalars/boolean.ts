@@ -1,4 +1,4 @@
-import type { ScalarDefinition } from "..";
+import { JomqlScalarType } from "../classes";
 
 function validate(value: unknown) {
   if (typeof value !== "boolean") throw true;
@@ -6,7 +6,7 @@ function validate(value: unknown) {
   return value;
 }
 
-export const boolean: ScalarDefinition = {
+export const boolean = new JomqlScalarType({
   name: "boolean",
   types: ["boolean"],
   description: "True or False",
@@ -15,4 +15,4 @@ export const boolean: ScalarDefinition = {
     return !!value;
   },
   parseValue: validate,
-};
+});
