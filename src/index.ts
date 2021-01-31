@@ -86,13 +86,16 @@ export function initializeJomql(app: Express, params: Params) {
 
   // populate all RESTful routes. This should only be done on cold starts.
   rootResolvers.forEach((item, key) => {
-    if (item.definition.route === jomqlPath)
+    const restOptions = item.definition.restOptions;
+    if (!restOptions) return;
+
+    if (restOptions.route === jomqlPath)
       throw new JomqlInitializationError({
         message: `Duplicate route for jomql path: '${jomqlPath}'`,
       });
 
-    app[item.definition.method](
-      item.definition.route,
+    app[restOptions.method](
+      restOptions.route,
       createRestRequestHandler(item.definition, key)
     );
   });

@@ -89,10 +89,15 @@ export interface ResolverObject {
 
 export interface RootResolverDefinition extends ResolverObject {
   name: string;
+  restOptions?: RestOptions;
+  resolver: RootResolverFunction;
+}
+
+export interface RestOptions {
   method: ValidMethod;
   route: string;
-  query?: JomqlQuery;
-  resolver: RootResolverFunction;
+  query: JomqlQuery;
+  argsTransformer?: (req: Request) => any;
 }
 
 export interface ObjectTypeDefinitionField
@@ -149,10 +154,12 @@ export interface JomqlResolverNode {
   };
 }
 
-export interface JomqlQuery {
-  [y: string]: any;
-  __args?: JomqlQueryArgs;
-}
+export type JomqlQuery =
+  | unknown
+  | {
+      [y: string]: any;
+      __args?: JomqlQueryArgs;
+    };
 
 export interface JomqlQueryArgs {
   [x: string]: JomqlQueryArgs | undefined;
@@ -165,5 +172,5 @@ export type JomqlResultsNode = null | {
 export function isRootResolverDefinition(
   ele: RootResolverDefinition | ObjectTypeDefinitionField
 ): ele is RootResolverDefinition {
-  return "method" in ele;
+  return "name" in ele;
 }

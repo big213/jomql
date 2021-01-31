@@ -1,10 +1,9 @@
 import { JomqlScalarType } from "../classes";
 
 function validate(value: unknown) {
-  const parsedValue = Number(value);
-  if (Number.isNaN(Number(value))) throw true;
-
-  return parsedValue;
+  // must be number
+  if (typeof value !== "number") throw true;
+  return value;
 }
 
 export const number = new JomqlScalarType({

@@ -1,6 +1,6 @@
-import type { Request, Response } from "express";
+import { request, Request, Response } from "express";
 import { generateNormalResponse, generateErrorResponse } from "./response";
-import { JomqlBaseError, JomqlQueryError } from "../classes";
+import { JomqlBaseError, JomqlQueryError, JomqlScalarType } from "../classes";
 import { isDebug, getCustomProcessor, lookupSymbol, rootResolvers } from "..";
 import {
   isObject,
@@ -21,18 +21,40 @@ export function createRestRequestHandler(
   return async function (req: Request, res: Response) {
     try {
       const fieldPath = [operationName];
-      const args = <JomqlQueryArgs>{
-        ...req.query,
-        ...req.params,
-      };
 
-      // if no query, use wildcard lookup as fallback
-      const query = rootResolverObject.query ?? { "*": lookupSymbol };
+      const argsTransformer = rootResolverObject.restOptions!.argsTransformer;
 
-      const jomqlQuery: JomqlQuery = {
-        ...query,
-        __args: args,
-      };
+      // generate args
+      let args = argsTransformer
+        ? argsTransformer(req)
+        : {
+            ...req.query,
+            ...req.params,
+          };
+
+      // if __args is object with no keys, set to undefined
+      if (isObject(args) && !Object.keys(args).length) args = undefined;
+
+      let jomqlQuery;
+
+      const presetQuery = rootResolverObject.restOptions!.query;
+      // if type is scalar and args !== undefined, construct query
+      if (
+        rootResolverObject.type instanceof JomqlScalarType &&
+        args !== undefined
+      ) {
+        jomqlQuery = {
+          __args: args,
+        };
+      } else if (isObject(presetQuery)) {
+        // build jomqlQuery
+        jomqlQuery = {
+          ...presetQuery,
+          __args: args,
+        };
+      } else {
+        jomqlQuery = presetQuery;
+      }
 
       // validate query in-place
       const jomqlResolverTree = generateJomqlResolverTree(
