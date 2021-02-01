@@ -1,7 +1,7 @@
-import { request, Request, Response } from "express";
+import { Request, Response } from "express";
 import { generateNormalResponse, generateErrorResponse } from "./response";
 import { JomqlBaseError, JomqlQueryError, JomqlScalarType } from "../classes";
-import { isDebug, getCustomProcessor, lookupSymbol, rootResolvers } from "..";
+import { getParams, lookupSymbol, rootResolvers } from "..";
 import {
   isObject,
   validateJomqlResults,
@@ -53,7 +53,7 @@ export function createRestRequestHandler(
           __args: args,
         };
       } else {
-        jomqlQuery = presetQuery;
+        jomqlQuery = presetQuery ?? lookupSymbol;
       }
 
       // validate query in-place
@@ -66,12 +66,12 @@ export function createRestRequestHandler(
 
       const results = await rootResolverObject.resolver({
         req,
-        query: jomqlQuery,
+        query: presetQuery,
         fieldPath,
         args,
       });
 
-      if (!getCustomProcessor())
+      if (getParams().processEntireTree)
         await processJomqlResolverTree({
           jomqlResultsNode: results,
           jomqlResolverNode: jomqlResolverTree,
@@ -139,7 +139,7 @@ export function createJomqlRequestHandler() {
         });
 
         // processes the remaining resolvers if not using a custom processor
-        if (!getCustomProcessor())
+        if (getParams().processEntireTree)
           results = await processJomqlResolverTree({
             jomqlResultsNode: results,
             jomqlResolverNode: jomqlResolverTree,
@@ -168,7 +168,7 @@ export function createJomqlRequestHandler() {
 }
 
 function sendErrorResponse(err: Error, res: Response) {
-  if (isDebug()) {
+  if (getParams().debug) {
     console.log(err);
   }
 

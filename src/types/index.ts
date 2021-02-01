@@ -38,9 +38,9 @@ export interface JomqlError {
 
 export interface Params {
   readonly debug?: boolean;
-  readonly lookupValue?: string | boolean | number;
+  readonly lookupValue?: string | boolean | number | null;
   readonly jomqlPath?: string;
-  readonly customProcessor?: boolean;
+  readonly processEntireTree?: boolean;
 }
 
 export type JomqlProcessorFunction = (
@@ -96,7 +96,7 @@ export interface RootResolverDefinition extends ResolverObject {
 export interface RestOptions {
   method: ValidMethod;
   route: string;
-  query: JomqlQuery;
+  query?: JomqlQuery;
   argsTransformer?: (req: Request) => any;
 }
 

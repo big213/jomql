@@ -1,5 +1,5 @@
 import { JomqlBaseError } from "../classes";
-import { isDebug } from "..";
+import { getParams } from "..";
 import { JomqlResponse } from "../types";
 
 export function generateErrorResponse(error: JomqlBaseError): JomqlResponse {
@@ -20,7 +20,7 @@ function generateJomqlResponse(
       error: {
         message: error.message,
         fieldPath: error.fieldPath,
-        ...(isDebug() && { stack: error.stack }),
+        ...(getParams().debug && { stack: error.stack }),
       },
     }),
   };

@@ -47,9 +47,7 @@ export {
   isRootResolverDefinition,
 } from "./types";
 
-let exportedLookupValue: any,
-  exportedDebug: boolean,
-  exportedCustomProcessor: boolean;
+let exportedParams: Required<Params>;
 
 // set a symbol for lookups
 export const lookupSymbol = Symbol("lookup");
@@ -60,14 +58,15 @@ export const scalarTypeDefs: Map<string, JomqlScalarType> = new Map();
 
 export const rootResolvers: Map<string, JomqlRootResolverType> = new Map();
 
-export function initializeJomql(app: Express, params: Params) {
-  const {
+export function initializeJomql(
+  app: Express,
+  {
     debug = false,
-    lookupValue = null,
+    lookupValue = true,
     jomqlPath = "/jomql",
-    customProcessor = false,
-  } = params;
-
+    processEntireTree = true,
+  }: Params = {}
+) {
   // jomqlPath must start with '/'
   if (!jomqlPath.match(/^\//)) {
     throw new JomqlInitializationError({
@@ -75,12 +74,12 @@ export function initializeJomql(app: Express, params: Params) {
     });
   }
 
-  exportedCustomProcessor = customProcessor;
-
-  //lookup value must be primitive. i.e. null, true, false, 1
-  exportedLookupValue = lookupValue;
-
-  exportedDebug = debug;
+  exportedParams = {
+    debug,
+    lookupValue,
+    jomqlPath,
+    processEntireTree,
+  };
 
   app.post(jomqlPath, createJomqlRequestHandler());
 
@@ -109,11 +108,14 @@ export function initializeJomql(app: Express, params: Params) {
   });
 }
 
-export const getLookupValue = () => exportedLookupValue;
-
-export const getCustomProcessor = () => exportedCustomProcessor;
-
-export const isDebug = () => exportedDebug;
+export const getParams = () => {
+  if (!exportedParams) {
+    throw new JomqlInitializationError({
+      message: `Jomql has not been initialized yet`,
+    });
+  }
+  return exportedParams;
+};
 
 export * as BaseScalars from "./scalars";
 

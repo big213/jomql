@@ -1,9 +1,4 @@
-import {
-  getLookupValue,
-  objectTypeDefs,
-  inputTypeDefs,
-  lookupSymbol,
-} from "..";
+import { getParams, objectTypeDefs, inputTypeDefs, lookupSymbol } from "..";
 import {
   JomqlArgsError,
   JomqlInputType,
@@ -336,7 +331,7 @@ export function generateJomqlResolverTree(
   }
 
   // define the lookupValue
-  const lookupValue = getLookupValue();
+  const lookupValue = getParams().lookupValue;
 
   // field must either be lookupValue OR an object
   // check if field is lookupValue

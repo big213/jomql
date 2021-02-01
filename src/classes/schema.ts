@@ -4,10 +4,16 @@ import {
   scalarTypeDefs,
   inputTypeDefs,
 } from "..";
-import { JomqlObjectType, JomqlScalarType, JomqlInputType } from "../classes";
-import { JomqlInputFieldType } from "./jomqlInputFieldType";
-import { JomqlInputTypeLookup } from "./jomqlInputTypeLookup";
-import { JomqlObjectTypeLookup } from "./jomqlObjectTypeLookup";
+import {
+  JomqlObjectType,
+  JomqlScalarType,
+  JomqlInputType,
+  JomqlInputFieldType,
+  JomqlInputTypeLookup,
+  JomqlObjectTypeLookup,
+} from "../classes";
+
+import type { Params } from "../types";
 
 function isNestedValue(
   ele: tsTypeFieldFinalValue | tsTypeFields
@@ -29,7 +35,26 @@ type tsTypeFieldFinalValue = {
 };
 
 export class TsSchemaGenerator {
-  scaffoldStr: string = `// Query builder
+  scaffoldStr: string;
+  typeDocumentRoot: tsTypeFields = {
+    value: new Map(),
+  };
+  scalarTsTypeFields: tsTypeFields = {
+    value: new Map(),
+    description: "All Scalar values",
+  };
+  inputTypeTsTypeFields: tsTypeFields = {
+    value: new Map(),
+    description: "All Input types",
+  };
+
+  constructor({ lookupValue = true }: Params = {}) {
+    const lookupString =
+      typeof lookupValue === "string"
+        ? `"${lookupValue}"`
+        : String(lookupValue);
+
+    this.scaffoldStr = `// Query builder (Typescript version >= 4.1.3 required)
 const queryResult = executeJomql({
   // Start typing here to get hints
   
@@ -69,9 +94,9 @@ type Queryize<T> = T extends Field<infer Type, infer Args>
     ? never
     : Type extends Primitive
     ? Args extends undefined // Args is undefined
-      ? true
+      ? LookupValue
       : Args extends [infer Arg]
-      ? true | { __args: Arg } // Args is a tuple
+      ? LookupValue | { __args: Arg } // Args is a tuple
       : { __args: Args }
     : Type extends (infer U)[]
     ? Queryize<Field<U, Args>>
@@ -82,18 +107,10 @@ type Queryize<T> = T extends Field<infer Type, infer Args>
         __args?: Arg;
       }
     : { [P in keyof Type]?: Queryize<Type[P]> } & { __args: Args }
-  : never;\n\n`;
-  typeDocumentRoot: tsTypeFields = {
-    value: new Map(),
-  };
-  scalarTsTypeFields: tsTypeFields = {
-    value: new Map(),
-    description: "All Scalar values",
-  };
-  inputTypeTsTypeFields: tsTypeFields = {
-    value: new Map(),
-    description: "All Input types",
-  };
+  : never;
+  
+type LookupValue = ${lookupString}\n\n`;
+  }
 
   buildSchema() {
     // all scalars
