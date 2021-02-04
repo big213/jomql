@@ -55,6 +55,13 @@ export function validateExternalArgs(
       fieldPath,
     });
 
+  // if !argDefinition.allowNull and args is null, throw err
+  if (!argDefinition.definition.allowNull && args === null)
+    throw new JomqlArgsError({
+      message: `Null field is not allowed`,
+      fieldPath,
+    });
+
   // if argDefinition.isArray and args is not array, throw err
   if (argDefinition.definition.isArray && !Array.isArray(args))
     throw new JomqlArgsError({

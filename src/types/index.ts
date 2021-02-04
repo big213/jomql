@@ -60,6 +60,7 @@ export interface InputFieldDefinition {
   type: JomqlScalarType | JomqlInputType | JomqlInputTypeLookup;
   required?: boolean;
   isArray?: boolean;
+  allowNull?: boolean;
 }
 
 export interface InputTypeDefinition {
