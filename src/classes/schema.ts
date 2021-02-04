@@ -307,7 +307,7 @@ type LookupValue = ${lookupString}\n\n`;
     return {
       value: inputDefName ?? "undefined",
       isArray: argDefinition?.definition.isArray ?? false,
-      isNullable: false,
+      isNullable: argDefinition?.definition.allowNull ?? false,
       isOptional: !argDefinition?.definition.required ?? false,
       description: undefined, // inputFieldType has no description
     };
