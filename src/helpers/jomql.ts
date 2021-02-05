@@ -460,6 +460,7 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
 
   // if typeDef is RootResolverDefinition, skip resolving (should already be done)
   if (resolverFn && !isRootResolverDefinition(jomqlResolverNode.typeDef)) {
+    // if defer, skip resolving
     if (!jomqlResolverNode.typeDef.defer) {
       returnValue = await resolverFn({
         req,

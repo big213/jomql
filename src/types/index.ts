@@ -108,9 +108,6 @@ export interface ObjectTypeDefinitionField
   defer?: boolean;
   required?: boolean;
   hidden?: boolean;
-  deleter?: Function;
-  setter?: Function;
-  updater?: Function;
 }
 
 export type JsType = "string" | "number" | "boolean" | "unknown";
