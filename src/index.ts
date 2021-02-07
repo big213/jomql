@@ -44,6 +44,7 @@ export {
   JomqlQuery,
   JomqlQueryArgs,
   ObjectTypeDefinitionField,
+  ArrayOptions,
   isRootResolverDefinition,
 } from "./types";
 

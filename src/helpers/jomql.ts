@@ -19,6 +19,7 @@ import {
   JomqlProcessorFunction,
   ObjectTypeDefinitionField,
   isRootResolverDefinition,
+  ArrayOptions,
 } from "../types";
 
 type stringKeyObject = { [x: string]: any };
@@ -31,7 +32,8 @@ export function isObject(ele: unknown): ele is stringKeyObject {
 export function validateExternalArgs(
   args: JomqlQueryArgs | undefined,
   argDefinition: JomqlInputFieldType | undefined,
-  fieldPath: string[]
+  fieldPath: string[],
+  arrayOptions: ArrayOptions | undefined
 ) {
   let parsedArgs;
 
@@ -55,6 +57,13 @@ export function validateExternalArgs(
       fieldPath,
     });
 
+  // if arrayOptions && !arrayOptions.allowNullElement and args is null, throw err
+  if (arrayOptions?.allowNullElement === false && args === null)
+    throw new JomqlArgsError({
+      message: `Null field is not allowed on array element`,
+      fieldPath,
+    });
+
   // if !argDefinition.allowNull and args is null, throw err
   if (!argDefinition.definition.allowNull && args === null)
     throw new JomqlArgsError({
@@ -62,12 +71,27 @@ export function validateExternalArgs(
       fieldPath,
     });
 
-  // if argDefinition.isArray and args is not array, throw err
-  if (argDefinition.definition.isArray && !Array.isArray(args))
-    throw new JomqlArgsError({
-      message: `Array expected`,
-      fieldPath,
-    });
+  // if array field
+  if (argDefinition.definition.arrayOptions) {
+    // if allowNull and not array, must be null
+    if (
+      argDefinition.definition.allowNull &&
+      !Array.isArray(args) &&
+      args !== null
+    ) {
+      throw new JomqlArgsError({
+        message: `Field must be Array or null`,
+        fieldPath,
+      });
+    }
+
+    // if !allowNull and not array, throw err
+    if (!argDefinition.definition.allowNull && !Array.isArray(args))
+      throw new JomqlArgsError({
+        message: `Array expected`,
+        fieldPath,
+      });
+  }
 
   let argDefType = argDefinition.definition.type;
 
@@ -87,7 +111,7 @@ export function validateExternalArgs(
     let argsArray: (JomqlQueryArgs | undefined)[];
     const fields = argDefType.definition.fields;
     // if args is array and it is supposed to be array, process each array element
-    if (Array.isArray(args) && argDefinition.definition.isArray) {
+    if (Array.isArray(args) && argDefinition.definition.arrayOptions) {
       argsArray = args;
     } else {
       argsArray = [args];
@@ -107,7 +131,8 @@ export function validateExternalArgs(
         const validatedArg = validateExternalArgs(
           arg[key],
           argDef,
-          fieldPath.concat(key)
+          fieldPath.concat(key),
+          argDefinition.definition.arrayOptions
         );
         // if key is undefined, make sure it is deleted
         if (validatedArg === undefined) delete arg[key];
@@ -137,7 +162,7 @@ export function validateExternalArgs(
     if (parseValue && args !== null) {
       try {
         // if arg is an array and supposed to be array, loop through
-        if (Array.isArray(args) && argDefinition.definition.isArray) {
+        if (Array.isArray(args) && argDefinition.definition.arrayOptions) {
           parsedArgs = args.map((ele: unknown) => parseValue(ele));
         } else {
           parsedArgs = parseValue(args);
@@ -174,7 +199,7 @@ export async function validateJomqlResults(
   if (nested) {
     // if output is null, cut the tree short and return
     if (jomqlResultsNode === null) return null;
-    if (jomqlResolverNode.typeDef.isArray) {
+    if (jomqlResolverNode.typeDef.arrayOptions) {
       if (Array.isArray(jomqlResultsNode)) {
         returnValue = await Promise.all(
           jomqlResultsNode.map(async (ele) => {
@@ -190,8 +215,9 @@ export async function validateJomqlResults(
           })
         );
       } else {
+        // if field is not Array or null, throw err
         throw new JomqlResultError({
-          message: `Expecting array`,
+          message: `Expecting array or null`,
           fieldPath: fieldPath,
         });
       }
@@ -246,7 +272,7 @@ export async function validateJomqlResults(
         try {
           if (
             Array.isArray(jomqlResultsNode) &&
-            jomqlResolverNode.typeDef.isArray
+            jomqlResolverNode.typeDef.arrayOptions
           ) {
             returnValue = jomqlResultsNode.map((ele: unknown) =>
               serializeFn(ele)
@@ -276,18 +302,35 @@ export function validateResultFields(
   resolverObject: ResolverObject,
   fieldPath: string[]
 ) {
-  if (resolverObject.isArray) {
-    if (!Array.isArray(value)) {
+  if (resolverObject.arrayOptions) {
+    if (Array.isArray(value)) {
+      value.forEach((ele) => {
+        validateResultNullish(
+          ele,
+          resolverObject,
+          fieldPath,
+          resolverObject.arrayOptions
+        );
+      });
+    } else if (!resolverObject.allowNull) {
       throw new JomqlResultError({
         message: `Array expected`,
         fieldPath,
       });
+    } else if (value !== null) {
+      // field must be null
+      throw new JomqlResultError({
+        message: `Array or null expected`,
+        fieldPath,
+      });
     }
-    value.forEach((ele) => {
-      validateResultNullish(ele, resolverObject, fieldPath);
-    });
   } else {
-    validateResultNullish(value, resolverObject, fieldPath);
+    validateResultNullish(
+      value,
+      resolverObject,
+      fieldPath,
+      resolverObject.arrayOptions
+    );
   }
 }
 
@@ -295,11 +338,16 @@ export function validateResultFields(
 export function validateResultNullish(
   value: unknown,
   resolverObject: ResolverObject,
-  fieldPath: string[]
+  fieldPath: string[],
+  arrayOptions: ArrayOptions | undefined
 ) {
-  if ((value === null || value === undefined) && !resolverObject.allowNull) {
+  const isNullAllowed = arrayOptions
+    ? arrayOptions.allowNullElement
+    : resolverObject.allowNull;
+  if ((value === null || value === undefined) && !isNullAllowed) {
     throw new JomqlResultError({
-      message: `Null value not allowed`,
+      message:
+        `Null value not allowed` + (arrayOptions ? " for array element" : ""),
       fieldPath,
     });
   }
@@ -395,7 +443,8 @@ export function generateJomqlResolverTree(
     validateExternalArgs(
       fieldValue.__args,
       resolverObject.args,
-      fieldPath.concat("__args")
+      fieldPath.concat("__args"),
+      resolverObject.arrayOptions
     );
 
     if (!isLeafNode && fieldType instanceof JomqlObjectType) {

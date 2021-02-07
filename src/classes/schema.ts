@@ -13,7 +13,7 @@ import {
   JomqlObjectTypeLookup,
 } from "../classes";
 
-import type { Params } from "../types";
+import type { Params, ArrayOptions } from "../types";
 
 function isNestedValue(
   ele: tsTypeFieldFinalValue | tsTypeFields
@@ -28,7 +28,7 @@ type tsTypeFields = {
 
 type tsTypeFieldFinalValue = {
   value: string;
-  isArray: boolean;
+  arrayOptions?: ArrayOptions;
   isNullable: boolean;
   isOptional: boolean;
   description?: string;
@@ -118,7 +118,6 @@ type LookupValue = ${lookupString}\n\n`;
       if (fieldDef instanceof JomqlScalarType) {
         this.scalarTsTypeFields.value.set(fieldDef.definition.name, {
           value: fieldDef.definition.types.join("|"),
-          isArray: false,
           isNullable: false,
           isOptional: false,
           description: fieldDef.definition.description,
@@ -186,7 +185,7 @@ type LookupValue = ${lookupString}\n\n`;
 
       rootObject.value.set("Type", {
         value: typename,
-        isArray: !!rootResolver.definition.isArray,
+        arrayOptions: rootResolver.definition.arrayOptions,
         isNullable: rootResolver.definition.allowNull,
         isOptional: false,
       });
@@ -242,7 +241,7 @@ type LookupValue = ${lookupString}\n\n`;
 
       rootObject.value.set("Type", {
         value: typename,
-        isArray: !!fieldDef.isArray,
+        arrayOptions: fieldDef.arrayOptions,
         isNullable: fieldDef.allowNull,
         isOptional: false,
         description: undefined,
@@ -306,7 +305,7 @@ type LookupValue = ${lookupString}\n\n`;
 
     return {
       value: inputDefName ?? "undefined",
-      isArray: argDefinition?.definition.isArray ?? false,
+      arrayOptions: argDefinition?.definition.arrayOptions,
       isNullable: argDefinition?.definition.allowNull ?? false,
       isOptional: !argDefinition?.definition.required ?? false,
       description: undefined, // inputFieldType has no description
@@ -329,9 +328,10 @@ type LookupValue = ${lookupString}\n\n`;
               (tsRootTypeValue.value === ""
                 ? "undefined"
                 : tsRootTypeValue.value) +
-              (tsRootTypeValue.isNullable ? "|null" : "") +
+              (tsRootTypeValue.arrayOptions?.allowNullElement ? "|null" : "") +
               ")" +
-              (tsRootTypeValue.isArray ? "[]" : "")
+              (tsRootTypeValue.arrayOptions ? "[]" : "") +
+              (tsRootTypeValue.isNullable ? "|null" : "")
             }`) +
         `\n`;
     });
@@ -352,9 +352,10 @@ type LookupValue = ${lookupString}\n\n`;
         if (value.description) str += `/**${value.description}*/`;
         str += `"${key}"${value.isOptional ? "?" : ""}:(${
           (value.value === "" ? "undefined" : value.value) +
-          (value.isNullable ? "|null" : "") +
+          (value.arrayOptions?.allowNullElement ? "|null" : "") +
           ")" +
-          (value.isArray ? "[]" : "")
+          (value.arrayOptions ? "[]" : "") +
+          (value.isNullable ? "|null" : "")
         };`;
       }
     });

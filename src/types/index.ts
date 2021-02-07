@@ -59,8 +59,12 @@ export type JomqlProcessorFunctionInputs = {
 export interface InputFieldDefinition {
   type: JomqlScalarType | JomqlInputType | JomqlInputTypeLookup;
   required?: boolean;
-  isArray?: boolean;
+  arrayOptions?: ArrayOptions;
   allowNull?: boolean;
+}
+
+export interface ArrayOptions {
+  allowNullElement: boolean;
 }
 
 export interface InputTypeDefinition {
@@ -82,7 +86,7 @@ export interface ObjectTypeDefinition {
 
 export interface ResolverObject {
   type: JomqlObjectTypeLookup | JomqlScalarType | JomqlObjectType;
-  isArray?: boolean;
+  arrayOptions?: ArrayOptions;
   allowNull: boolean;
   args?: JomqlInputFieldType;
   description?: string;
