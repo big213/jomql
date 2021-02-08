@@ -32,8 +32,7 @@ export function isObject(ele: unknown): ele is stringKeyObject {
 export function validateExternalArgs(
   args: JomqlQueryArgs | undefined,
   argDefinition: JomqlInputFieldType | undefined,
-  fieldPath: string[],
-  arrayOptions: ArrayOptions | undefined
+  fieldPath: string[]
 ) {
   let parsedArgs;
 
@@ -54,13 +53,6 @@ export function validateExternalArgs(
   if (argDefinition.definition.required && args === undefined)
     throw new JomqlArgsError({
       message: `Args is required`,
-      fieldPath,
-    });
-
-  // if arrayOptions && !arrayOptions.allowNullElement and args is null, throw err
-  if (arrayOptions?.allowNullElement === false && args === null)
-    throw new JomqlArgsError({
-      message: `Null field is not allowed on array element`,
       fieldPath,
     });
 
@@ -112,6 +104,16 @@ export function validateExternalArgs(
     const fields = argDefType.definition.fields;
     // if args is array and it is supposed to be array, process each array element
     if (Array.isArray(args) && argDefinition.definition.arrayOptions) {
+      // if !allowNullElements and there is a null element, throw err
+      if (
+        !argDefinition.definition.arrayOptions.allowNullElement &&
+        args.some((ele) => ele === null)
+      ) {
+        throw new JomqlArgsError({
+          message: `Null field is not allowed on array element`,
+          fieldPath,
+        });
+      }
       argsArray = args;
     } else {
       argsArray = [args];
@@ -119,38 +121,40 @@ export function validateExternalArgs(
 
     // process all args
     for (const arg of argsArray) {
-      if (!isObject(arg))
+      if (!isObject(arg) && !argDefinition.definition.allowNull)
         throw new JomqlArgsError({
           message: `Object expected`,
           fieldPath,
         });
 
-      const keysToValidate = new Set(Object.keys(arg));
-      Object.entries(fields).forEach(([key, argDef]) => {
-        // validate each key of arg
-        const validatedArg = validateExternalArgs(
-          arg[key],
-          argDef,
-          fieldPath.concat(key),
-          argDefinition.definition.arrayOptions
-        );
-        // if key is undefined, make sure it is deleted
-        if (validatedArg === undefined) delete arg[key];
-        else arg[key] = validatedArg;
-        keysToValidate.delete(key);
-      });
-
-      // check if any remaining keys to validate (aka unknown args)
-      if (keysToValidate.size > 0) {
-        throw new JomqlArgsError({
-          message: `Unknown args '${[...keysToValidate].join(",")}'`,
-          fieldPath,
+      // if arg is null and allowed to be null, do nothing
+      if (isObject(arg)) {
+        const keysToValidate = new Set(Object.keys(arg));
+        Object.entries(fields).forEach(([key, argDef]) => {
+          // validate each key of arg
+          const validatedArg = validateExternalArgs(
+            arg[key],
+            argDef,
+            fieldPath.concat(key)
+          );
+          // if key is undefined, make sure it is deleted
+          if (validatedArg === undefined) delete arg[key];
+          else arg[key] = validatedArg;
+          keysToValidate.delete(key);
         });
-      }
 
-      // perform validation on results
-      if (argDefType.definition.inputsValidator) {
-        argDefType.definition.inputsValidator(arg, fieldPath);
+        // check if any remaining keys to validate (aka unknown args)
+        if (keysToValidate.size > 0) {
+          throw new JomqlArgsError({
+            message: `Unknown args '${[...keysToValidate].join(",")}'`,
+            fieldPath,
+          });
+        }
+
+        // perform validation on results
+        if (argDefType.definition.inputsValidator) {
+          argDefType.definition.inputsValidator(arg, fieldPath);
+        }
       }
     }
   } else {
@@ -443,8 +447,7 @@ export function generateJomqlResolverTree(
     validateExternalArgs(
       fieldValue.__args,
       resolverObject.args,
-      fieldPath.concat("__args"),
-      resolverObject.arrayOptions
+      fieldPath.concat("__args")
     );
 
     if (!isLeafNode && fieldType instanceof JomqlObjectType) {
