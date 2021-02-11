@@ -47,6 +47,10 @@ export class TsSchemaGenerator {
     value: new Map(),
     description: "All Input types",
   };
+  mainTypesTsTypeFields: tsTypeFields = {
+    value: new Map(),
+    description: "All main types",
+  };
 
   constructor({ lookupValue = true }: Params = {}) {
     const lookupString =
@@ -73,6 +77,8 @@ export type GetQuery<K extends keyof Root> = K extends never
   : Record<K, Queryize<Root[K]>>;
 
 export type GetResponse<K extends keyof Root> = Responseize<Root[K]>;
+
+export type GetType<T> = Responseize<Field<T, undefined>>
 
 type Primitive = string | number | boolean | undefined | null;
 
@@ -127,14 +133,34 @@ type LookupValue = ${lookupString}\n\n`;
 
     this.typeDocumentRoot.value.set("Scalars", this.scalarTsTypeFields);
 
-    this.typeDocumentRoot.value.set("InputType", this.inputTypeTsTypeFields);
+    this.typeDocumentRoot.value.set("InputTypes", this.inputTypeTsTypeFields);
+
+    this.typeDocumentRoot.value.set("MainTypes", this.mainTypesTsTypeFields);
 
     // add main types
     objectTypeDefs.forEach((typeDef, typeDefKey) => {
-      const capitalizedTypeDefKey = capitalizeString(typeDefKey);
+      const capitalizedTypeDefKey = capitalizeString(typeDef.definition.name);
       const mainTypeFields = this.processTypeDefinition(typeDef);
 
       this.typeDocumentRoot.value.set(capitalizedTypeDefKey, mainTypeFields);
+
+      const rootObject: tsTypeFields = {
+        value: new Map(),
+      };
+
+      rootObject.value.set("Typename", {
+        value: `"${typeDef.definition.name}"`,
+        isNullable: false,
+        isOptional: false,
+      });
+
+      rootObject.value.set("Type", {
+        value: `GetType<${capitalizedTypeDefKey}>`,
+        isNullable: false,
+        isOptional: false,
+      });
+
+      this.mainTypesTsTypeFields.value.set(typeDef.definition.name, rootObject);
     });
 
     // add root resolvers -- must be added AFTER types
@@ -295,7 +321,7 @@ type LookupValue = ${lookupString}\n\n`;
         }
 
         // update the argTypename
-        inputDefName = `InputType['${argDefName}']`;
+        inputDefName = `InputTypes['${argDefName}']`;
         inputTypeTypeFields.description = argDefType.definition.description;
       } else {
         // if it is a scalarDefinition, look up in input Definition table
