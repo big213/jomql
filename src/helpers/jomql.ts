@@ -13,27 +13,27 @@ import {
 
 import {
   JomqlResolverNode,
-  JomqlQueryArgs,
   ResolverObject,
   RootResolverDefinition,
   JomqlProcessorFunction,
   ObjectTypeDefinitionField,
   isRootResolverDefinition,
   ArrayOptions,
+  StringKeyObject,
+  JomqlRootResolverNode,
 } from "../types";
+import type { Request } from "express";
 
-type stringKeyObject = { [x: string]: any };
-
-export function isObject(ele: unknown): ele is stringKeyObject {
+export function isObject(ele: unknown): ele is StringKeyObject {
   return Object.prototype.toString.call(ele) === "[object Object]";
 }
 
-// validates and replaces the args in place
+// validates and replaces the args, returns the validated args
 export function validateExternalArgs(
-  args: JomqlQueryArgs | undefined,
+  args: unknown,
   argDefinition: JomqlInputFieldType | undefined,
   fieldPath: string[]
-) {
+): unknown {
   let parsedArgs;
 
   // if no argDefinition and args provided, throw error
@@ -100,7 +100,7 @@ export function validateExternalArgs(
 
   // if argDefinition.type is inputTypeDefinition
   if (argDefType instanceof JomqlInputType) {
-    let argsArray: (JomqlQueryArgs | undefined)[];
+    let argsArray: unknown[];
     const fields = argDefType.definition.fields;
     // if args is array and it is supposed to be array, process each array element
     if (Array.isArray(args) && argDefinition.definition.arrayOptions) {
@@ -139,7 +139,9 @@ export function validateExternalArgs(
           );
           // if key is undefined, make sure it is deleted
           if (validatedArg === undefined) delete arg[key];
-          else arg[key] = validatedArg;
+          else {
+            arg[key] = validatedArg;
+          }
           keysToValidate.delete(key);
         });
 
@@ -195,9 +197,7 @@ export async function validateJomqlResults(
   jomqlResultsNode: unknown,
   jomqlResolverNode: JomqlResolverNode,
   fieldPath: string[]
-) {
-  let returnValue: any;
-
+): Promise<unknown> {
   const nested = jomqlResolverNode.nested;
 
   if (nested) {
@@ -205,9 +205,9 @@ export async function validateJomqlResults(
     if (jomqlResultsNode === null) return null;
     if (jomqlResolverNode.typeDef.arrayOptions) {
       if (Array.isArray(jomqlResultsNode)) {
-        returnValue = await Promise.all(
+        return Promise.all(
           jomqlResultsNode.map(async (ele) => {
-            const arrReturnValue: any = {};
+            const arrReturnValue: StringKeyObject = {};
             for (const field in jomqlResolverNode.nested) {
               arrReturnValue[field] = await validateJomqlResults(
                 ele[field],
@@ -232,14 +232,15 @@ export async function validateJomqlResults(
           fieldPath: fieldPath,
         });
 
-      returnValue = {};
+      const tempReturnValue: StringKeyObject = {};
       for (const field in jomqlResolverNode.nested) {
-        returnValue[field] = await validateJomqlResults(
+        tempReturnValue[field] = await validateJomqlResults(
           jomqlResultsNode[field],
           jomqlResolverNode.nested[field],
           fieldPath.concat(field)
         );
       }
+      return tempReturnValue;
     }
   } else {
     // check for nulls and ensure array fields are arrays
@@ -264,7 +265,7 @@ export async function validateJomqlResults(
     }
 
     if (fieldType instanceof JomqlObjectType) {
-      returnValue = jomqlResultsNode;
+      return jomqlResultsNode;
     } else {
       const serializeFn = fieldType.definition.serialize;
       // if field is null, skip
@@ -278,11 +279,9 @@ export async function validateJomqlResults(
             Array.isArray(jomqlResultsNode) &&
             jomqlResolverNode.typeDef.arrayOptions
           ) {
-            returnValue = jomqlResultsNode.map((ele: unknown) =>
-              serializeFn(ele)
-            );
+            return jomqlResultsNode.map((ele: unknown) => serializeFn(ele));
           } else {
-            returnValue = await serializeFn(jomqlResultsNode);
+            return serializeFn(jomqlResultsNode);
           }
         } catch {
           // transform any errors thrown into JomqlParseError
@@ -292,12 +291,10 @@ export async function validateJomqlResults(
           });
         }
       } else {
-        returnValue = jomqlResultsNode;
+        return jomqlResultsNode;
       }
     }
   }
-
-  return returnValue;
 }
 
 // throws an error if a field is not an array when it should be
@@ -305,7 +302,7 @@ export function validateResultFields(
   value: unknown,
   resolverObject: ResolverObject,
   fieldPath: string[]
-) {
+): void {
   if (resolverObject.arrayOptions) {
     if (Array.isArray(value)) {
       value.forEach((ele) => {
@@ -344,7 +341,7 @@ export function validateResultNullish(
   resolverObject: ResolverObject,
   fieldPath: string[],
   arrayOptions: ArrayOptions | undefined
-) {
+): void {
   const isNullAllowed = arrayOptions
     ? arrayOptions.allowNullElement
     : resolverObject.allowNull;
@@ -367,6 +364,16 @@ export function generateAnonymousRootResolver(
   };
 
   return anonymousRootResolver;
+}
+
+export function generateRootResolverTree(
+  fieldValue: unknown,
+  rootResolverObject: RootResolverDefinition,
+  fieldPath: string[] = []
+): JomqlRootResolverNode {
+  return <JomqlRootResolverNode>(
+    generateJomqlResolverTree(fieldValue, rootResolverObject, fieldPath, true)
+  );
 }
 
 export function generateJomqlResolverTree(
@@ -496,6 +503,19 @@ export function generateJomqlResolverTree(
   };
 }
 
+export function processRootResolver(
+  req: Request,
+  fieldPath: string[],
+  rootResolverNode: JomqlRootResolverNode
+): Promise<unknown> | unknown {
+  return rootResolverNode.typeDef.resolver({
+    req,
+    fieldPath,
+    args: rootResolverNode.args,
+    query: rootResolverNode.query,
+  });
+}
+
 // resolves the queries, and attaches them to the obj (if possible)
 export const processJomqlResolverTree: JomqlProcessorFunction = async ({
   jomqlResultsNode,
@@ -505,45 +525,43 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
   data = {},
   fieldPath = [],
 }) => {
-  let returnValue: any;
-
   const resolverFn = jomqlResolverNode.typeDef.resolver;
   const nested = jomqlResolverNode.nested;
 
   // if typeDef is RootResolverDefinition, skip resolving (should already be done)
   if (resolverFn && !isRootResolverDefinition(jomqlResolverNode.typeDef)) {
     // if defer, skip resolving
-    if (!jomqlResolverNode.typeDef.defer) {
-      returnValue = await resolverFn({
-        req,
-        fieldPath,
-        args: jomqlResolverNode.args,
-        query: jomqlResolverNode.query,
-        fieldValue: jomqlResultsNode,
-        parentValue: parentNode,
-        data,
-      });
+    if (jomqlResolverNode.typeDef.defer) {
+      return null;
     }
+    return resolverFn({
+      req,
+      fieldPath,
+      args: jomqlResolverNode.args,
+      query: jomqlResolverNode.query,
+      fieldValue: jomqlResultsNode,
+      parentValue: parentNode,
+      data,
+    });
   } else if (nested && isObject(jomqlResultsNode)) {
     // must be nested field.
-    returnValue = jomqlResultsNode;
+    const tempReturnValue = jomqlResultsNode;
 
     for (const field in jomqlResolverNode.nested) {
       const currentFieldPath = fieldPath.concat(field);
-      returnValue[field] = await processJomqlResolverTree({
+      tempReturnValue[field] = await processJomqlResolverTree({
         jomqlResultsNode: isObject(jomqlResultsNode)
           ? jomqlResultsNode[field]
           : null,
-        parentNode: returnValue,
+        parentNode: jomqlResultsNode,
         jomqlResolverNode: jomqlResolverNode.nested[field],
         req,
         data,
         fieldPath: currentFieldPath,
       });
     }
+    return tempReturnValue;
   } else {
-    returnValue = jomqlResultsNode;
+    return jomqlResultsNode;
   }
-
-  return returnValue ?? null;
 };

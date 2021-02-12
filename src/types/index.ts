@@ -10,10 +10,14 @@ import {
 
 // extendable by user
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Jomql {
+    // eslint-disable-next-line @typescript-eslint/no-empty-interface
     interface ObjectTypeDefinitionField {}
   }
 }
+
+export type StringKeyObject = { [x: string]: unknown };
 
 export type ValidMethod =
   | "all"
@@ -26,7 +30,7 @@ export type ValidMethod =
   | "head";
 
 export interface JomqlResponse {
-  data: any;
+  data: unknown;
   error?: JomqlError;
 }
 
@@ -45,7 +49,7 @@ export interface Params {
 
 export type JomqlProcessorFunction = (
   params: JomqlProcessorFunctionInputs
-) => Promise<any>;
+) => Promise<unknown>;
 
 export type JomqlProcessorFunctionInputs = {
   jomqlResultsNode: unknown;
@@ -73,7 +77,7 @@ export interface InputTypeDefinition {
   fields: {
     [x: string]: JomqlInputFieldType;
   };
-  inputsValidator?: (args: any, fieldPath: string[]) => void;
+  inputsValidator?: (args: unknown, fieldPath: string[]) => void;
 }
 
 export interface ObjectTypeDefinition {
@@ -101,8 +105,8 @@ export interface RootResolverDefinition extends ResolverObject {
 export interface RestOptions {
   method: ValidMethod;
   route: string;
-  query?: JomqlQuery;
-  argsTransformer?: (req: Request) => any;
+  query?: unknown;
+  argsTransformer?: (req: Request) => unknown;
 }
 
 export interface ObjectTypeDefinitionField
@@ -124,52 +128,50 @@ export interface ScalarDefinition {
   parseValue?: ScalarDefinitionFunction;
 }
 
-export type ScalarDefinitionFunction = (value: unknown) => any;
+export type ScalarDefinitionFunction = (value: unknown) => unknown;
 
 export interface RootResolverFunctionInput {
   req: Request;
   fieldPath: string[];
-  args: any;
-  query?: JomqlQuery;
+  args: unknown;
+  query?: unknown;
 }
 
-export type RootResolverFunction = (input: RootResolverFunctionInput) => any;
+export type RootResolverFunction = (
+  input: RootResolverFunctionInput
+) => unknown;
 
 export interface ResolverFunctionInput {
   req: Request;
   fieldPath: string[];
-  args: any;
-  query: JomqlQuery | undefined;
+  args: unknown;
+  query: unknown;
   parentValue: any;
-  fieldValue: any;
+  fieldValue: unknown;
   data?: any;
 }
 
-export type ResolverFunction = (input: ResolverFunctionInput) => any;
+export type ResolverFunction = (input: ResolverFunctionInput) => unknown;
 
-export interface JomqlResolverNode {
-  typeDef: ObjectTypeDefinitionField | RootResolverDefinition;
-  query?: JomqlQuery;
-  args?: JomqlQueryArgs;
+export interface JomqlRootResolverNode {
+  typeDef: RootResolverDefinition;
+  query?: unknown;
+  args?: unknown;
   nested?: {
     [x: string]: JomqlResolverNode;
   };
 }
 
-export type JomqlQuery =
-  | unknown
-  | {
-      [y: string]: any;
-      __args?: JomqlQueryArgs;
-    };
-
-export interface JomqlQueryArgs {
-  [x: string]: JomqlQueryArgs | undefined;
+export interface JomqlResolverNode {
+  typeDef: ObjectTypeDefinitionField | RootResolverDefinition;
+  query?: unknown;
+  args?: unknown;
+  nested?: {
+    [x: string]: JomqlResolverNode;
+  };
 }
 
-export type JomqlResultsNode = null | {
-  [x: string]: JomqlResultsNode | any;
-};
+export type JomqlResultsNode = unknown;
 
 export function isRootResolverDefinition(
   ele: RootResolverDefinition | ObjectTypeDefinitionField

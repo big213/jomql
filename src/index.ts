@@ -41,11 +41,10 @@ export {
   JsType,
   ResolverFunction,
   RootResolverFunction,
-  JomqlQuery,
-  JomqlQueryArgs,
   ObjectTypeDefinitionField,
   ArrayOptions,
   isRootResolverDefinition,
+  StringKeyObject,
 } from "./types";
 
 let exportedParams: Required<Params>;
@@ -67,7 +66,7 @@ export function initializeJomql(
     jomqlPath = "/jomql",
     processEntireTree = true,
   }: Params = {}
-) {
+): void {
   // jomqlPath must start with '/'
   if (!jomqlPath.match(/^\//)) {
     throw new JomqlInitializationError({
@@ -100,7 +99,7 @@ export function initializeJomql(
     );
   });
 
-  app.set("json replacer", function (key: string, value: any) {
+  app.set("json replacer", function (key: string, value: unknown) {
     // undefined values are set to `null`
     if (typeof value === "undefined") {
       return null;
@@ -109,14 +108,14 @@ export function initializeJomql(
   });
 }
 
-export const getParams = () => {
+export function getParams(): Params {
   if (!exportedParams) {
     throw new JomqlInitializationError({
       message: `Jomql has not been initialized yet`,
     });
   }
   return exportedParams;
-};
+}
 
 export * as BaseScalars from "./scalars";
 

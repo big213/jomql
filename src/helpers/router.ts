@@ -7,22 +7,20 @@ import {
   validateJomqlResults,
   processJomqlResolverTree,
   generateJomqlResolverTree,
+  processRootResolver,
+  generateRootResolverTree,
 } from "./jomql";
-import type {
-  RootResolverDefinition,
-  JomqlQueryArgs,
-  JomqlQuery,
-} from "../types";
+import type { RootResolverDefinition } from "../types";
 
 export function createRestRequestHandler(
   rootResolverObject: RootResolverDefinition,
   operationName: string
 ) {
-  return async function (req: Request, res: Response) {
+  return async function (req: Request, res: Response): Promise<void> {
     try {
       const fieldPath = [operationName];
 
-      const argsTransformer = rootResolverObject.restOptions!.argsTransformer;
+      const argsTransformer = rootResolverObject.restOptions?.argsTransformer;
 
       // generate args
       let args = argsTransformer
@@ -37,7 +35,7 @@ export function createRestRequestHandler(
 
       let jomqlQuery;
 
-      const presetQuery = rootResolverObject.restOptions!.query;
+      const presetQuery = rootResolverObject.restOptions?.query;
       // if type is scalar and args !== undefined, construct query
       if (
         rootResolverObject.type instanceof JomqlScalarType &&
@@ -57,22 +55,21 @@ export function createRestRequestHandler(
       }
 
       // validate query in-place
-      const jomqlResolverTree = generateJomqlResolverTree(
+      const jomqlResolverTree = generateRootResolverTree(
         jomqlQuery,
         rootResolverObject,
-        fieldPath,
-        true
+        fieldPath
       );
 
-      const results = await rootResolverObject.resolver({
+      let results = await processRootResolver(
         req,
-        query: presetQuery,
         fieldPath,
-        args,
-      });
+        jomqlResolverTree
+      );
 
+      // processes the remaining tree, excluding the root resolver
       if (getParams().processEntireTree)
-        await processJomqlResolverTree({
+        results = await processJomqlResolverTree({
           jomqlResultsNode: results,
           jomqlResolverNode: jomqlResolverTree,
           req,
@@ -94,7 +91,7 @@ export function createRestRequestHandler(
 }
 
 export function createJomqlRequestHandler() {
-  return async function (req: Request, res: Response) {
+  return async function (req: Request, res: Response): Promise<void> {
     try {
       // handle jomql queries, check if req.body is object
       if (!isObject(req.body)) {
@@ -119,48 +116,44 @@ export function createJomqlRequestHandler() {
 
       const rootResolver = rootResolvers.get(operation);
 
-      if (rootResolver) {
-        // validate query in-place
-        const jomqlResolverTree = generateJomqlResolverTree(
-          query,
-          rootResolver.definition,
-          fieldPath,
-          true
-        );
-
-        const { __args: jomqlArgs, ...jomqlQuery } = query;
-
-        // executes the root level resolver only.
-        let results = await rootResolver.definition.resolver({
-          req,
-          fieldPath,
-          args: jomqlArgs,
-          query: jomqlQuery,
-        });
-
-        // processes the remaining resolvers if not using a custom processor
-        if (getParams().processEntireTree)
-          results = await processJomqlResolverTree({
-            jomqlResultsNode: results,
-            jomqlResolverNode: jomqlResolverTree,
-            req,
-            fieldPath,
-          });
-
-        // traverse results and extract records, validate nulls, arrays, etc.
-        const validatedResults = await validateJomqlResults(
-          results,
-          jomqlResolverTree,
-          fieldPath
-        );
-
-        sendSuccessResponse(validatedResults, res);
-      } else {
+      if (!rootResolver) {
         throw new JomqlQueryError({
           message: `Unrecognized jomql root query '${operation}'`,
           fieldPath: [],
         });
       }
+
+      // validate query in-place
+      const jomqlResolverTree = generateRootResolverTree(
+        query,
+        rootResolver.definition,
+        fieldPath
+      );
+
+      // executes the root level resolver only.
+      let results = await processRootResolver(
+        req,
+        fieldPath,
+        jomqlResolverTree
+      );
+
+      // processes the remaining resolvers if not using a custom processor
+      if (getParams().processEntireTree)
+        results = await processJomqlResolverTree({
+          jomqlResultsNode: results,
+          jomqlResolverNode: jomqlResolverTree,
+          req,
+          fieldPath,
+        });
+
+      // traverse results and extract records, validate nulls, arrays, etc.
+      const validatedResults = await validateJomqlResults(
+        results,
+        jomqlResolverTree,
+        fieldPath
+      );
+
+      sendSuccessResponse(validatedResults, res);
     } catch (err) {
       sendErrorResponse(err, res);
     }
