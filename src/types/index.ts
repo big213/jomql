@@ -52,12 +52,13 @@ export type JomqlProcessorFunction = (
 ) => Promise<unknown>;
 
 export type JomqlProcessorFunctionInputs = {
-  jomqlResultsNode: unknown;
+  jomqlResultsNode?: unknown;
   jomqlResolverNode: JomqlResolverNode;
   parentNode?: unknown;
   req: Request;
   data?: any;
   fieldPath: string[];
+  fullTree?: boolean;
 };
 
 export interface InputFieldDefinition {
@@ -152,15 +153,6 @@ export interface ResolverFunctionInput {
 }
 
 export type ResolverFunction = (input: ResolverFunctionInput) => unknown;
-
-export interface JomqlRootResolverNode {
-  typeDef: RootResolverDefinition;
-  query?: unknown;
-  args?: unknown;
-  nested?: {
-    [x: string]: JomqlResolverNode;
-  };
-}
 
 export interface JomqlResolverNode {
   typeDef: ObjectTypeDefinitionField | RootResolverDefinition;

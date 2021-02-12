@@ -7,8 +7,6 @@ import {
   validateJomqlResults,
   processJomqlResolverTree,
   generateJomqlResolverTree,
-  processRootResolver,
-  generateRootResolverTree,
 } from "./jomql";
 import type { RootResolverDefinition } from "../types";
 
@@ -55,26 +53,20 @@ export function createRestRequestHandler(
       }
 
       // validate query in-place
-      const jomqlResolverTree = generateRootResolverTree(
+      const jomqlResolverTree = generateJomqlResolverTree(
         jomqlQuery,
         rootResolverObject,
-        fieldPath
+        fieldPath,
+        true
       );
 
-      let results = await processRootResolver(
+      // processes the tree
+      const results = await processJomqlResolverTree({
+        jomqlResolverNode: jomqlResolverTree,
         req,
         fieldPath,
-        jomqlResolverTree
-      );
-
-      // processes the remaining tree, excluding the root resolver
-      if (getParams().processEntireTree)
-        results = await processJomqlResolverTree({
-          jomqlResultsNode: results,
-          jomqlResolverNode: jomqlResolverTree,
-          req,
-          fieldPath,
-        });
+        fullTree: getParams().processEntireTree,
+      });
 
       // traverse results and extract records, validate nulls, arrays, etc.
       const validatedResults = await validateJomqlResults(
@@ -124,27 +116,20 @@ export function createJomqlRequestHandler() {
       }
 
       // validate query in-place
-      const jomqlResolverTree = generateRootResolverTree(
+      const jomqlResolverTree = generateJomqlResolverTree(
         query,
         rootResolver.definition,
-        fieldPath
+        fieldPath,
+        true
       );
 
-      // executes the root level resolver only.
-      let results = await processRootResolver(
+      // processes the resolvers
+      const results = await processJomqlResolverTree({
+        jomqlResolverNode: jomqlResolverTree,
         req,
         fieldPath,
-        jomqlResolverTree
-      );
-
-      // processes the remaining resolvers if not using a custom processor
-      if (getParams().processEntireTree)
-        results = await processJomqlResolverTree({
-          jomqlResultsNode: results,
-          jomqlResolverNode: jomqlResolverTree,
-          req,
-          fieldPath,
-        });
+        fullTree: getParams().processEntireTree,
+      });
 
       // traverse results and extract records, validate nulls, arrays, etc.
       const validatedResults = await validateJomqlResults(

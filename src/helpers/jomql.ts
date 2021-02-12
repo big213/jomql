@@ -20,9 +20,7 @@ import {
   isRootResolverDefinition,
   ArrayOptions,
   StringKeyObject,
-  JomqlRootResolverNode,
 } from "../types";
-import type { Request } from "express";
 
 export function isObject(ele: unknown): ele is StringKeyObject {
   return Object.prototype.toString.call(ele) === "[object Object]";
@@ -366,16 +364,6 @@ export function generateAnonymousRootResolver(
   return anonymousRootResolver;
 }
 
-export function generateRootResolverTree(
-  fieldValue: unknown,
-  rootResolverObject: RootResolverDefinition,
-  fieldPath: string[] = []
-): JomqlRootResolverNode {
-  return <JomqlRootResolverNode>(
-    generateJomqlResolverTree(fieldValue, rootResolverObject, fieldPath, true)
-  );
-}
-
 export function generateJomqlResolverTree(
   fieldValue: unknown,
   resolverObject: ObjectTypeDefinitionField | RootResolverDefinition,
@@ -503,19 +491,6 @@ export function generateJomqlResolverTree(
   };
 }
 
-export function processRootResolver(
-  req: Request,
-  fieldPath: string[],
-  rootResolverNode: JomqlRootResolverNode
-): Promise<unknown> | unknown {
-  return rootResolverNode.typeDef.resolver({
-    req,
-    fieldPath,
-    args: rootResolverNode.args,
-    query: rootResolverNode.query,
-  });
-}
-
 // resolves the queries, and attaches them to the obj (if possible)
 export const processJomqlResolverTree: JomqlProcessorFunction = async ({
   jomqlResultsNode,
@@ -524,7 +499,23 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
   req,
   data = {},
   fieldPath = [],
+  fullTree = false,
 }) => {
+  let results;
+  // if it is a root resolver, fetch the results first.
+  if (isRootResolverDefinition(jomqlResolverNode.typeDef)) {
+    results = await jomqlResolverNode.typeDef.resolver({
+      req,
+      fieldPath,
+      args: jomqlResolverNode.args,
+      query: jomqlResolverNode.query,
+    });
+    // if full tree not required, return here
+    if (!fullTree) return results;
+  } else {
+    results = jomqlResultsNode;
+  }
+
   const resolverFn = jomqlResolverNode.typeDef.resolver;
   const nested = jomqlResolverNode.nested;
 
@@ -539,21 +530,19 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
       fieldPath,
       args: jomqlResolverNode.args,
       query: jomqlResolverNode.query,
-      fieldValue: jomqlResultsNode,
+      fieldValue: results,
       parentValue: parentNode,
       data,
     });
-  } else if (nested && isObject(jomqlResultsNode)) {
+  } else if (nested && isObject(results)) {
     // must be nested field.
-    const tempReturnValue = jomqlResultsNode;
+    const tempReturnValue = results;
 
     for (const field in jomqlResolverNode.nested) {
       const currentFieldPath = fieldPath.concat(field);
       tempReturnValue[field] = await processJomqlResolverTree({
-        jomqlResultsNode: isObject(jomqlResultsNode)
-          ? jomqlResultsNode[field]
-          : null,
-        parentNode: jomqlResultsNode,
+        jomqlResultsNode: isObject(results) ? results[field] : null,
+        parentNode: results,
         jomqlResolverNode: jomqlResolverNode.nested[field],
         req,
         data,
@@ -562,6 +551,6 @@ export const processJomqlResolverTree: JomqlProcessorFunction = async ({
     }
     return tempReturnValue;
   } else {
-    return jomqlResultsNode;
+    return results;
   }
 };
