@@ -340,7 +340,7 @@ type LookupValue = ${lookupString}\n\n`;
 
   outputSchema() {
     // build final TS document
-    let typesStr: string = "";
+    let typesStr = "";
 
     this.typeDocumentRoot.value.forEach((tsRootTypeValue, typename) => {
       // has description? if so, add jsdoc

@@ -224,13 +224,21 @@ export async function validateJomqlResults(
         });
       }
     } else {
+      const tempReturnValue: StringKeyObject = {};
+      // if no nested fields requested, return empty object
+      if (
+        jomqlResolverNode.nested &&
+        Object.keys(jomqlResolverNode.nested).length < 1
+      ) {
+        return tempReturnValue;
+      }
+
       if (!isObject(jomqlResultsNode))
         throw new JomqlResultError({
           message: `Expecting object`,
           fieldPath: fieldPath,
         });
 
-      const tempReturnValue: StringKeyObject = {};
       for (const field in jomqlResolverNode.nested) {
         tempReturnValue[field] = await validateJomqlResults(
           jomqlResultsNode[field],

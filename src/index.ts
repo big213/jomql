@@ -38,7 +38,6 @@ export {
   InputTypeDefinition,
   ScalarDefinition,
   JomqlResolverNode,
-  JsType,
   ResolverFunction,
   RootResolverFunction,
   ObjectTypeDefinitionField,

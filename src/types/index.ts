@@ -119,7 +119,7 @@ export interface ObjectTypeDefinitionField
   hidden?: boolean;
 }
 
-export type JsType = "string" | "number" | "boolean" | "unknown";
+// export type JsType = "string" | "number" | "boolean" | "unknown";
 
 export interface ScalarDefinition {
   name: string;
