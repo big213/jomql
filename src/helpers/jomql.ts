@@ -230,7 +230,7 @@ export async function validateJomqlResults(
         jomqlResolverNode.nested &&
         Object.keys(jomqlResolverNode.nested).length < 1
       ) {
-        return tempReturnValue;
+        return isObject(jomqlResultsNode) ? tempReturnValue : null;
       }
 
       if (!isObject(jomqlResultsNode))
